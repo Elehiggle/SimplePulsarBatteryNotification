@@ -1,132 +1,83 @@
-# Pulsar X2 Battery Logger (Windows)
+# Simple Pulsar Battery Notification
 
-This project logs the battery percentage of a Pulsar X2 Crazylight mouse
-on Windows by sending a vendor HID output report (ID `0x08`, command `0x04`)
-and reading the matching input report from the dongle.
+This is a small background tool that **notifies you via a Windows toast and
+beeps** when your Pulsar X2 battery is low and **not charging**. It reads the
+battery directly from the dongle using a vendor HID report.
 
-## Requirements
+Inspired by https://github.com/jonkristian/pulsar-x3-python/ - the key
+takeaways were that the battery value lives at byte 6 of a vendor report and
+that the dongle uses HID control/interrupt traffic for these queries.
 
+## Features
+
+- Low-battery notifications (toast + beeps)
+- Different thresholds when the PC is locked vs unlocked
+- Works with the Pulsar X2 Crazylight wireless dongle on Windows
+
+## Prerequisites
+
+- Windows 10/11 (tested on Windows only)
 - Python 3.8+
-- `hidapi` (installs the `hid` module on Windows)
 
-Install the dependency:
+## Installation
+
+### SIMPLE USAGE: Skip to the [Usage via Windows binary](#usage-via-windows-binary) section if you want to use the precompiled Windows executable file
+
+1. Install dependencies:
+
+    ```powershell
+    pip install -r requirements.txt
+    ```
+
+2. (Optional) Set environment variables:
+
+| Parameter                              | Description                                                        |
+|----------------------------------------|--------------------------------------------------------------------|
+| `BATTERY_LEVEL_ALERT_THRESHOLD`        | Battery % threshold when unlocked (default: `5`)                   |
+| `BATTERY_LEVEL_ALERT_THRESHOLD_LOCKED` | Battery % threshold shortly after locking (default: `30`)          |
+| `LOG_LEVEL_ROOT`                       | Root logging level (default: `INFO`)                                |
+| `LOG_LEVEL`                            | App logging level (default: `INFO`)                                 |
+
+## Usage via script
+
+Run the notifier:
 
 ```powershell
-pip install hidapi
+python .\main.py
 ```
 
-## Usage
-
-Log once to confirm the value:
+Optional one-off battery check:
 
 ```powershell
 python .\pulsar_x2_battery_logger.py --once
 ```
 
-Log every 60 seconds to `battery_log.csv`:
+## Usage via Windows binary
 
-```powershell
-python .\pulsar_x2_battery_logger.py
+Simply run the executable file which you can download [here](https://github.com/Elehiggle/SimplePulsarBatteryNotification/releases)
+(attention: Windows SmartScreen Defender may raise an alert, this is normal
+since this is an unknown tool). It will silently run in the background and
+notify you when your Pulsar device battery is low via notifications and beeps
+at certain thresholds. Copy the file into your startup folder at
+`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup` to run it
+automatically on startup. It will use the default variables (5% and 30% for
+when the PC is locked).
+
 ```
-
-List HID devices to find the right interface or index:
-
-```powershell
-python .\pulsar_x2_battery_logger.py --list-devices
-python .\pulsar_x2_battery_logger.py --index 0 --once
+%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup
 ```
-
-Force wireless or wired IDs:
-
-```powershell
-python .\pulsar_x2_battery_logger.py --mode wireless
-python .\pulsar_x2_battery_logger.py --mode wired
-```
-
-## Notes on cmd04 and warmup
-
-The logger sends cmd04 directly. In recent re-tests on this machine, cmd04
-responded immediately without any warmup sequence. Earlier in development we
-observed cases where cmd04 did not respond until after the vendor interface
-had been exercised (for example, after the official software communicated).
-If you ever see intermittent cmd04 failures, you can capture USB traffic and
-compare whether a warmup sequence is present.
-
-## Debugging and protocol discovery
-
-We derived the cmd04 battery read by capturing USB traffic from the official
-Pulsar software and inspecting USB HID transactions.
-
-Tools and workflow:
-
-- **USBPcap** (driver + `USBPcapCMD.exe`) to capture USB traffic on Windows.
-- **Wireshark / tshark** to inspect the capture. We used:
-  - `tshark` to locate `SET_REPORT` control transfers (`URB_FUNCTION_CLASS_INTERFACE`)
-    with report ID `0x08` and to find the `HID Data` responses containing the
-    battery value.
-  - `usb.data_fragment` for outbound `SET_REPORT` payloads.
-  - `usbhid.data` for inbound interrupt report payloads.
-- **hidapi** (Python) to replay the captured reports and verify the battery
-  byte position in live responses.
-
-Key findings:
-
-- **Outbound cmd04** is a HID class `SET_REPORT` to interface 1:
-  `0804000000000000000000000000000049`
-- **Inbound cmd04 response** is an interrupt IN report:
-  `08040000000223...` where byte 6 (`0x23`) is the battery percent (35% in
-  the capture).
-- **Charging flag** lives at byte 7: `0x00` when idle, `0x01` when charging
-  (confirmed by comparing wireless idle vs. wireless charging captures).
-- The battery response lives on the vendor usage page `0xff02`, endpoint `0x82`.
-
-How we matched the right device:
-
-- Used `hid.enumerate()` and `--list-devices` to list HID interfaces for
-  VID `0x3710` and PID `0x5406` (wireless) / `0x3414` (wired).
-- The correct interface was the vendor usage page `0xff02` on interface 1
-  (the same interface used by the `SET_REPORT` cmd04 traffic in the capture).
-
-## Differences vs. the Pulsar X3 reference project
-
-The reference X3 project uses a different protocol and transport:
-
-- **Device IDs**: X3 uses `0x3710:0x3410` (wired) / `0x3710:0x5403` (wireless),
-  while X2 uses `0x3710:0x3414` / `0x3710:0x5406`.
-- **Transport**: X3 uses libusb control transfers on Linux; this X2 logger
-  uses hidapi on Windows.
-- **Command**: X3 sends `08 81 01` and reads the response from the same
-  control transfer (feature report, report ID `0x00`).
-- **X2 cmd04**: X2 sends output report `0x08` with command `0x04` and reads
-  the response on the interrupt IN endpoint (report `0x08`, battery at byte 6).
 
 ## Notes
 
-- Wireless dongle ID: `0x3710:0x5406`
-- Wired ID: `0x3710:0x3414`
-- If `--once` prints "Battery read failed", run with `--list-devices` and
-  try `--index` or `--interface` to target the vendor HID interface
-  (usage page `0xff02`).
-- When the mouse is plugged in, the dongle can stop returning cmd04 responses
-  because the mouse switches to the wired interface. In that state, `--mode wireless`
-  may fail while `--mode wired` succeeds.
-- While charging over USB, the reported percent can move quickly (voltage-based),
-  so wired readings may differ from the last wireless reading.
-- The logger treats the presence of the wired PID (`0x3414`) as charging and
-  will output `charging=yes` even if the cmd04 flag says otherwise.
-- If you see "Unable to load the HID backend", uninstall the pure-python
-  `hid` package and reinstall:
+- This is specifically for the Pulsar X2 Crazylight. I don’t know if other
+  models work yet. Pull requests are welcome.
+- The detailed protocol research lives in `DETAILS.md`.
+- The debug script is in `research\pulsar_x2_debug_logger.py`.
 
-```powershell
-pip uninstall hid
-pip install hidapi
-```
+## Contributing
 
-## Logs
+Contributions are welcome! If you find any issues or have suggestions for improvements, please open an issue or submit a pull request.
 
-The CSV log format is:
+## License
 
-```
-timestamp,battery_percent
-2025-12-20T05:12:34,39
-```
+This project is licensed under the MIT License.

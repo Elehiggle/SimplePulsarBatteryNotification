@@ -1,0 +1,48 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+    paths-ignore:
+      - 'README.md'
+      - '**.png'
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install pyinstaller==5.13.2        # pyinstaller 6 windowed flag causes detection by Windows as a virus
+
+    - name: Build executable
+      run: pyinstaller --noconfirm --onefile --windowed --hidden-import "winrt.windows.foundation.collections" --name "PulsarX2BatteryNotification" main.py
+      env:
+        SOURCE_DATE_EPOCH: 0
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-executable
+        path: dist/*.exe
+        if-no-files-found: error
+        overwrite: true
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@69320dbe05506a9a39fc8ae11030b214ec2d1f87
+      with:
+        files: ./dist/*.exe
+        prerelease: false
+        make_latest: true
+        token: ${{ secrets.GH_TOKEN }}

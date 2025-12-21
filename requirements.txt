@@ -1,1 +1,2 @@
 hidapi
+Windows-Toasts>=1.1.1

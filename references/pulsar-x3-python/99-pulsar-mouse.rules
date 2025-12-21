@@ -1,0 +1,3 @@
+# Pulsar X3 Mouse - allow non-root access
+SUBSYSTEM=="usb", ATTRS{idVendor}=="3710", ATTRS{idProduct}=="3410", MODE="0666"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="3710", ATTRS{idProduct}=="5403", MODE="0666"

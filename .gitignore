@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+battery_log.csv
+*.log
+*.pcap
+*.err
+*.out

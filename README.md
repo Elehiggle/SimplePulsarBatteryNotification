@@ -105,6 +105,11 @@ The reference X3 project uses a different protocol and transport:
 - If `--once` prints "Battery read failed", run with `--list-devices` and
   try `--index` or `--interface` to target the vendor HID interface
   (usage page `0xff02`).
+- When the mouse is plugged in, the dongle can stop returning cmd04 responses
+  because the mouse switches to the wired interface. In that state, `--mode wireless`
+  may fail while `--mode wired` succeeds.
+- While charging over USB, the reported percent can move quickly (voltage-based),
+  so wired readings may differ from the last wireless reading.
 - If you see "Unable to load the HID backend", uninstall the pure-python
   `hid` package and reinstall:
 

@@ -123,6 +123,13 @@ def list_candidate_devices(mode: str, interface: int | None) -> list[dict]:
     return devices
 
 
+def has_wired_device() -> bool:
+    for info in hid.enumerate():
+        if info.get("vendor_id") == VID and info.get("product_id") == PID_WIRED:
+            return True
+    return False
+
+
 def print_devices(devices: list[dict]) -> None:
     if not devices:
         print("No matching Pulsar devices found.")
@@ -179,7 +186,15 @@ def normalize_input_report(data: bytes | list[int]) -> bytes:
     return data
 
 
-def read_battery_cmd04(dev: hid.device, debug: bool) -> int | None:
+def parse_cmd04_payload(payload: bytes) -> tuple[int, bool] | None:
+    if len(payload) < 8:
+        return None
+    battery = payload[6]
+    charging = payload[7] != 0x00
+    return battery, charging
+
+
+def read_battery_cmd04(dev: hid.device, debug: bool) -> tuple[int, bool] | None:
     drain_input(dev)
 
     def read_cmd(expected_cmd: int, timeout: float, log_other: bool) -> bytes | None:
@@ -214,10 +229,15 @@ def read_battery_cmd04(dev: hid.device, debug: bool) -> int | None:
     if payload is None:
         return None
 
-    raw = payload[6]
+    parsed = parse_cmd04_payload(payload)
+    if parsed is None:
+        if debug:
+            print(f"cmd04 parse failed data={payload.hex()}")
+        return None
+    raw, charging = parsed
     if debug:
-        print(f"cmd04 raw={raw} data={payload.hex()}")
-    return raw
+        print(f"cmd04 raw={raw} charging={charging} data={payload.hex()}")
+    return raw, charging
 
 
 def select_device(
@@ -235,8 +255,8 @@ def select_device(
         dev = None
         try:
             dev = open_device(info)
-            battery = read_battery_cmd04(dev, debug)
-            if battery is not None:
+            status = read_battery_cmd04(dev, debug)
+            if status is not None:
                 if debug:
                     print(f"selected path={format_path(info.get('path'))}")
                 return dev, info
@@ -293,8 +313,11 @@ def run_logger(args: argparse.Namespace) -> int:
                     continue
 
             battery = None
+            charging = None
             try:
-                battery = read_battery_cmd04(dev, args.debug)
+                status = read_battery_cmd04(dev, args.debug)
+                if status is not None:
+                    battery, charging = status
             except (OSError, ValueError) as exc:
                 if args.debug:
                     print(f"read_failed err={exc}")
@@ -304,11 +327,17 @@ def run_logger(args: argparse.Namespace) -> int:
                     pass
                 dev = None
 
-            if battery is not None:
+            if battery is not None and charging is not None:
                 stamp = timestamp(args.utc)
                 log_handle.write(f"{stamp},{battery}\n")
                 log_handle.flush()
-                print(f"{stamp} battery={battery}%")
+                wired_present = has_wired_device()
+                if wired_present and not charging:
+                    if args.debug:
+                        print("charging override: wired device present")
+                    charging = True
+                charging_str = "yes" if charging else "no"
+                print(f"{stamp} battery={battery}% charging={charging_str}")
                 if args.once:
                     return 0
             else:

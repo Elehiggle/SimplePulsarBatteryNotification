@@ -76,6 +76,8 @@ Key findings:
 - **Inbound cmd04 response** is an interrupt IN report:
   `08040000000223...` where byte 6 (`0x23`) is the battery percent (35% in
   the capture).
+- **Charging flag** lives at byte 7: `0x00` when idle, `0x01` when charging
+  (confirmed by comparing wireless idle vs. wireless charging captures).
 - The battery response lives on the vendor usage page `0xff02`, endpoint `0x82`.
 
 How we matched the right device:
@@ -110,6 +112,8 @@ The reference X3 project uses a different protocol and transport:
   may fail while `--mode wired` succeeds.
 - While charging over USB, the reported percent can move quickly (voltage-based),
   so wired readings may differ from the last wireless reading.
+- The logger treats the presence of the wired PID (`0x3414`) as charging and
+  will output `charging=yes` even if the cmd04 flag says otherwise.
 - If you see "Unable to load the HID backend", uninstall the pure-python
   `hid` package and reinstall:
 

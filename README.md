@@ -69,10 +69,16 @@ when the PC is locked).
 
 ## Notes
 
-- This is specifically for the Pulsar X2 Crazylight. I don’t know if other
+- This is specifically for the Pulsar X2 Crazylight. I do not know if other
   models work yet. Pull requests are welcome.
+- Battery readings can jump upward shortly after plugging in a charging cable
+  and stay higher even after unplugging. The dongle appears to report a raw
+  battery value that can lag or differ from the official software, so treat
+  these readings as approximate and best for notifications rather than precise
+  calibration.
 - The detailed protocol research lives in `DETAILS.md`.
 - The debug script is in `research\pulsar_x2_debug_logger.py`.
+
 
 ## Contributing
 

@@ -30,7 +30,7 @@ jobs:
         pip install pyinstaller==5.13.2        # pyinstaller 6 windowed flag causes detection by Windows as a virus
 
     - name: Build executable
-      run: pyinstaller --noconfirm --onefile --windowed --hidden-import "winrt.windows.foundation.collections" --name "PulsarX2BatteryNotification" main.py
+      run: pyinstaller --noconfirm --onefile --windowed --hidden-import "winrt.windows.foundation.collections" --name "SimplePulsarBatteryNotification" main.py
       env:
         SOURCE_DATE_EPOCH: 0
 

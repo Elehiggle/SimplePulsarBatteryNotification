@@ -62,8 +62,9 @@ except ImportError as exc:
 
 
 VID = 0x3710
-PID_WIRELESS = 0x5406
-PID_WIRED = 0x3414
+PID_WIRELESS = 0x5406  # Pulsar 8K Dongle.
+PID_WIRED = 0x3414  # Pulsar X2 Crazylight (wired).
+PID_WIRED_X3_LHD_CL = 0x3508  # Possibly Pulsar X3 LHD CrazyLight. Unused.
 USAGE_PAGE_VENDOR = 0xFF02
 
 CMD03_PACKET = bytes([0x08, 0x03] + [0x00] * 14 + [0x4A])

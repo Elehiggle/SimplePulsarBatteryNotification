@@ -46,6 +46,12 @@ Run the notifier:
 python .\main.py
 ```
 
+One-off status toast:
+
+```powershell
+python .\main.py --once
+```
+
 Optional one-off battery check:
 
 ```powershell
@@ -65,6 +71,12 @@ when the PC is locked).
 
 ```
 %APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup
+```
+
+One-off status toast:
+
+```
+SimplePulsarBatteryNotification.exe --once
 ```
 
 ## Notes

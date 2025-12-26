@@ -1,3 +1,4 @@
+import argparse
 import ctypes
 import logging
 import os
@@ -26,20 +27,23 @@ def get_foreground_window():
     return ctypes.windll.user32.GetForegroundWindow()
 
 
-def send_alert(battery_level):
+def show_toast(text_fields, beep: bool) -> None:
     toast = Toast()
-    toast.text_fields = [f"Battery: {battery_level}%"]
+    toast.text_fields = text_fields
     max_retries = 5
     retries = 0
 
     while retries < max_retries:
         try:
             WindowsToaster("Pulsar X2 Battery").show_toast(toast)
-            winsound.Beep(200, 200)
-            winsound.Beep(200, 200)
-            winsound.Beep(200, 200)
+            # If successful, break out of the loop and beep as normal
+            if beep:
+                winsound.Beep(200, 200)
+                winsound.Beep(200, 200)
+                winsound.Beep(200, 200)
             break
         except ImportError:
+            # This exception can occur extremely rarely
             retries += 1
             if retries >= max_retries:
                 error_message = (
@@ -47,9 +51,29 @@ def send_alert(battery_level):
                     "The application will now be restarted to resolve this issue."
                 )
                 ctypes.windll.user32.MessageBoxW(None, error_message, "Error", 0)
+
+                # Restart the exe
+                # If running as a PyInstaller-built exe, sys.executable should be the path to it.
                 exe_path = sys.executable
+                # On Windows, re-run the executable with the same arguments.
                 os.execv(exe_path, [exe_path] + sys.argv)
+            # If not reached max retries, sleep and try again
             time.sleep(1)
+
+
+def send_alert(battery_level):
+    show_toast([f"Battery: {battery_level}%"], beep=True)
+
+
+def send_status_toast(battery_level: int, is_charging: bool) -> None:
+    charging_text = "yes" if is_charging else "no"
+    show_toast(
+        [
+            f"Battery: {battery_level}%",
+            f"Charging: {charging_text}",
+        ],
+        beep=False,
+    )
 
 
 def read_battery_status():
@@ -103,21 +127,40 @@ def check_battery_is_low(battery_alert_threshold):
 
 
 def main():
+    parser = argparse.ArgumentParser(
+        description="Pulsar battery notifier",
+    )
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Send a one-off toast with current battery and charging status.",
+    )
+    args = parser.parse_args()
+
+    if args.once:
+        status = read_battery_status()
+        if status is None:
+            logger.error("Battery status not available")
+            return
+        battery_percentage, is_charging = status
+        send_status_toast(battery_percentage, is_charging)
+        return
+
     last_time_windows_was_unlocked = 0
     last_check = 0
 
     while True:
         is_pc_locked = get_foreground_window() == 0
-        time.sleep(2)
-        is_pc_locked = is_pc_locked and get_foreground_window() == 0
+        time.sleep(2)  # Sleep for 2 seconds
+        is_pc_locked = is_pc_locked and get_foreground_window() == 0  # Recheck, as this method is not perfect
 
         if is_pc_locked:
-            if time.time() - last_time_windows_was_unlocked < 10:
+            if time.time() - last_time_windows_was_unlocked < 10:  # Check if we just locked windows within last 10 seconds
                 logger.debug("PC is locked, time to check")
                 check_battery_is_low(battery_level_alert_threshold_locked)
         else:
             last_time_windows_was_unlocked = time.time()
-            if time.time() - last_check > 60 * 20:
+            if time.time() - last_check > 60 * 20:  # Check every 20 minutes
                 last_check = time.time()
                 last_time_windows_was_unlocked = time.time()
                 check_battery_is_low(battery_level_alert_threshold)

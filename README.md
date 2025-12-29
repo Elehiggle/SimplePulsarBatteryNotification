@@ -25,18 +25,18 @@ that the dongle uses HID control/interrupt traffic for these queries.
 
 1. Install dependencies:
 
-    ```powershell
-    pip install -r requirements.txt
-    ```
+   ```powershell
+   pip install -r requirements.txt
+   ```
 
 2. (Optional) Set environment variables:
 
-| Parameter                              | Description                                                        |
-|----------------------------------------|--------------------------------------------------------------------|
-| `BATTERY_LEVEL_ALERT_THRESHOLD`        | Battery % threshold when unlocked (default: `5`)                   |
-| `BATTERY_LEVEL_ALERT_THRESHOLD_LOCKED` | Battery % threshold shortly after locking (default: `30`)          |
-| `LOG_LEVEL_ROOT`                       | Root logging level (default: `INFO`)                                |
-| `LOG_LEVEL`                            | App logging level (default: `INFO`)                                 |
+| Parameter                              | Description                                               |
+| -------------------------------------- | --------------------------------------------------------- |
+| `BATTERY_LEVEL_ALERT_THRESHOLD`        | Battery % threshold when unlocked (default: `5`)          |
+| `BATTERY_LEVEL_ALERT_THRESHOLD_LOCKED` | Battery % threshold shortly after locking (default: `30`) |
+| `LOG_LEVEL_ROOT`                       | Root logging level (default: `INFO`)                      |
+| `LOG_LEVEL`                            | App logging level (default: `INFO`)                       |
 
 ## Usage via script
 
@@ -88,7 +88,7 @@ SimplePulsarBatteryNotification.exe --once
 
 ## Notes
 
-- This is specifically for the Pulsar X2 Crazylight, with support for the X2 V1. 
+- This is specifically for the Pulsar X2 Crazylight, with support for the X2 V1.
   I do not know if other models work yet. Pull requests are welcome.
 - Battery readings can jump upward shortly after plugging in a charging cable
   and stay higher even after unplugging. The dongle appears to report a raw
@@ -99,7 +99,6 @@ SimplePulsarBatteryNotification.exe --once
   last successful reading for up to 10 minutes.
 - The detailed protocol research lives in `DETAILS.md`.
 - The debug script is in `research\pulsar_x2_debug_logger.py`.
-
 
 ## Contributing
 

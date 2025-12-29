@@ -41,12 +41,12 @@ last successful reading for up to 10 minutes.
 
 Environment variables:
 
-| Parameter                              | Description                                                        |
-|----------------------------------------|--------------------------------------------------------------------|
-| `BATTERY_LEVEL_ALERT_THRESHOLD`        | Battery % threshold when unlocked (default: `5`)                   |
-| `BATTERY_LEVEL_ALERT_THRESHOLD_LOCKED` | Battery % threshold shortly after locking (default: `30`)          |
-| `LOG_LEVEL_ROOT`                       | Root logging level (default: `INFO`)                                |
-| `LOG_LEVEL`                            | App logging level (default: `INFO`)                                 |
+| Parameter                              | Description                                               |
+| -------------------------------------- | --------------------------------------------------------- |
+| `BATTERY_LEVEL_ALERT_THRESHOLD`        | Battery % threshold when unlocked (default: `5`)          |
+| `BATTERY_LEVEL_ALERT_THRESHOLD_LOCKED` | Battery % threshold shortly after locking (default: `30`) |
+| `LOG_LEVEL_ROOT`                       | Root logging level (default: `INFO`)                      |
+| `LOG_LEVEL`                            | App logging level (default: `INFO`)                       |
 
 Run the notifier:
 

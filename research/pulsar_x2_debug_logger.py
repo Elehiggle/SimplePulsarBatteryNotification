@@ -187,7 +187,9 @@ def normalize_input_report(data: bytes | list[int]) -> bytes:
     return data
 
 
-def read_cmd(logger, dev, expected_cmd: int, timeout: float, log_other: bool) -> bytes | None:
+def read_cmd(
+    logger, dev, expected_cmd: int, timeout: float, log_other: bool
+) -> bytes | None:
     deadline = time.time() + timeout
     while time.time() < deadline:
         data, err = safe_call(logger, "cmd04_read", dev.read, 17, 250)
@@ -200,7 +202,9 @@ def read_cmd(logger, dev, expected_cmd: int, timeout: float, log_other: bool) ->
             continue
         if payload[1] != expected_cmd:
             if log_other:
-                logger.debug("cmd04 skip cmd=0x%02x data=%s", payload[1], hex_bytes(payload))
+                logger.debug(
+                    "cmd04 skip cmd=0x%02x data=%s", payload[1], hex_bytes(payload)
+                )
             continue
         return payload
     return None
@@ -248,7 +252,9 @@ def snapshot_device(logger, info, cached_descriptors):
                     logger.info("%s=%s", label, value)
 
         if hasattr(dev, "get_report_descriptor"):
-            descriptor, err = safe_call(logger, "report_descriptor", dev.get_report_descriptor)
+            descriptor, err = safe_call(
+                logger, "report_descriptor", dev.get_report_descriptor
+            )
             if descriptor is not None:
                 descriptor = bytes(descriptor)
                 path = format_path(info.get("path"))
@@ -274,7 +280,9 @@ def snapshot_device(logger, info, cached_descriptors):
 
 
 def run(args) -> int:
-    logger = setup_logger(args.log_path, logging.INFO if args.console else logging.WARNING)
+    logger = setup_logger(
+        args.log_path, logging.INFO if args.console else logging.WARNING
+    )
     log_environment(logger, hid)
 
     cached_descriptors = set()

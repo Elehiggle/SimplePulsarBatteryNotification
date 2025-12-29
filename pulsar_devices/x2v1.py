@@ -32,8 +32,10 @@ def build_cmd01_packet(nonce: int | bytes | None = None) -> bytes:
         if len(nonce_bytes) != 4:
             raise ValueError("cmd01 nonce must be exactly 4 bytes")
 
-    body = bytes([OUTPUT_REPORT_ID, 0x01, 0x00, 0x00, 0x00, 0x08]) + nonce_bytes + bytes(
-        [0x00] * 6
+    body = (
+        bytes([OUTPUT_REPORT_ID, 0x01, 0x00, 0x00, 0x00, 0x08])
+        + nonce_bytes
+        + bytes([0x00] * 6)
     )
     chk = (CMD01_TARGET_SUM - (sum(body) & 0xFF)) & 0xFF
     return body + bytes([chk])
@@ -60,7 +62,10 @@ def list_candidate_devices(mode: str, interface: int | None) -> list[dict]:
             continue
         if interface is not None and info.get("interface_number") != interface:
             continue
-        if USAGE_PAGE_VENDOR is not None and info.get("usage_page") != USAGE_PAGE_VENDOR:
+        if (
+            USAGE_PAGE_VENDOR is not None
+            and info.get("usage_page") != USAGE_PAGE_VENDOR
+        ):
             continue
         devices.append(info)
 
@@ -288,7 +293,11 @@ def select_device(
         r = None
         try:
             w = open_device(writer_info)
-            r = w if writer_info.get("path") == reader_info.get("path") else open_device(reader_info)
+            r = (
+                w
+                if writer_info.get("path") == reader_info.get("path")
+                else open_device(reader_info)
+            )
             status = read_battery_cmd04(w, debug, transport=transport, reader=r)
             if status is None:
                 return None, None

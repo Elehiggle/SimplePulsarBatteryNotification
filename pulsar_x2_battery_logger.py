@@ -146,7 +146,9 @@ def run_logger(args: argparse.Namespace) -> int:
                     transport,
                 )
                 if dev_write is None or dev_read is None:
-                    print("No responsive device found; will retry if --once was omitted.")
+                    print(
+                        "No responsive device found; will retry if --once was omitted."
+                    )
                     if args.once:
                         return 1
                     time.sleep(args.interval)

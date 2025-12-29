@@ -1,4 +1,4 @@
-import argparse
+﻿import argparse
 import ctypes
 import logging
 import os
@@ -6,9 +6,15 @@ import sys
 import time
 import winsound
 
-from windows_toasts import Toast, WindowsToaster, ToastDisplayImage, ToastImage, ToastImagePosition
+from windows_toasts import (
+    Toast,
+    WindowsToaster,
+    ToastDisplayImage,
+    ToastImage,
+    ToastImagePosition,
+)
 
-import pulsar_x2_battery_logger as battery_logger
+import pulsar_battery_logger as battery_logger
 
 log_level_root = os.getenv("LOG_LEVEL_ROOT", "INFO").upper()
 logging.basicConfig(level=log_level_root)
@@ -170,10 +176,14 @@ def main():
     while True:
         is_pc_locked = get_foreground_window() == 0
         time.sleep(2)  # Sleep for 2 seconds
-        is_pc_locked = is_pc_locked and get_foreground_window() == 0  # Recheck, as this method is not perfect
+        is_pc_locked = (
+            is_pc_locked and get_foreground_window() == 0
+        )  # Recheck, as this method is not perfect
 
         if is_pc_locked:
-            if time.time() - last_time_windows_was_unlocked < 10:  # Check if we just locked windows within last 10 seconds
+            if (
+                time.time() - last_time_windows_was_unlocked < 10
+            ):  # Check if we just locked windows within last 10 seconds
                 logger.debug("PC is locked, time to check")
                 check_battery_is_low(battery_level_alert_threshold_locked)
         else:
@@ -188,3 +198,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

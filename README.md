@@ -1,4 +1,4 @@
-# Simple Pulsar Battery Notification
+﻿# Simple Pulsar Battery Notification
 
 This is a small background tool that **notifies you via a Windows toast and
 beeps** when your Pulsar X2 battery is low and **not charging**. It reads the
@@ -25,18 +25,18 @@ that the dongle uses HID control/interrupt traffic for these queries.
 
 1. Install dependencies:
 
-    ```powershell
-    pip install -r requirements.txt
-    ```
+   ```powershell
+   pip install -r requirements.txt
+   ```
 
 2. (Optional) Set environment variables:
 
-| Parameter                              | Description                                                        |
-|----------------------------------------|--------------------------------------------------------------------|
-| `BATTERY_LEVEL_ALERT_THRESHOLD`        | Battery % threshold when unlocked (default: `5`)                   |
-| `BATTERY_LEVEL_ALERT_THRESHOLD_LOCKED` | Battery % threshold shortly after locking (default: `30`)          |
-| `LOG_LEVEL_ROOT`                       | Root logging level (default: `INFO`)                                |
-| `LOG_LEVEL`                            | App logging level (default: `INFO`)                                 |
+| Parameter                              | Description                                               |
+| -------------------------------------- | --------------------------------------------------------- |
+| `BATTERY_LEVEL_ALERT_THRESHOLD`        | Battery % threshold when unlocked (default: `5`)          |
+| `BATTERY_LEVEL_ALERT_THRESHOLD_LOCKED` | Battery % threshold shortly after locking (default: `30`) |
+| `LOG_LEVEL_ROOT`                       | Root logging level (default: `INFO`)                      |
+| `LOG_LEVEL`                            | App logging level (default: `INFO`)                       |
 
 ## Usage via script
 
@@ -55,14 +55,14 @@ python .\main.py --once
 Optional one-off battery check:
 
 ```powershell
-python .\pulsar_x2_battery_logger.py --once
+python .\pulsar_battery_logger.py --once
 ```
 
 Force a specific device backend:
 
 ```powershell
-python .\pulsar_x2_battery_logger.py --backend x2cl --once
-python .\pulsar_x2_battery_logger.py --backend x2v1 --once
+python .\pulsar_battery_logger.py --backend x2cl --once
+python .\pulsar_battery_logger.py --backend x2v1 --once
 ```
 
 ## Usage via Windows binary
@@ -88,7 +88,7 @@ SimplePulsarBatteryNotification.exe --once
 
 ## Notes
 
-- This is specifically for the Pulsar X2 Crazylight, with support for the X2 V1. 
+- This is specifically for the Pulsar X2 Crazylight, with support for the X2 V1.
   I do not know if other models work yet. Pull requests are welcome.
 - Battery readings can jump upward shortly after plugging in a charging cable
   and stay higher even after unplugging. The dongle appears to report a raw
@@ -100,7 +100,6 @@ SimplePulsarBatteryNotification.exe --once
 - The detailed protocol research lives in `DETAILS.md`.
 - The debug script is in `research\pulsar_x2_debug_logger.py`.
 
-
 ## Contributing
 
 Contributions are welcome! If you find any issues or have suggestions for improvements, please open an issue or submit a pull request.
@@ -108,3 +107,4 @@ Contributions are welcome! If you find any issues or have suggestions for improv
 ## License
 
 This project is licensed under the MIT License.
+

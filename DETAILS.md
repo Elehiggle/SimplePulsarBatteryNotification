@@ -137,15 +137,6 @@ The reference X3 project uses a different protocol and transport:
   may fail while `--mode wired` succeeds.
 - While charging over USB, the reported percent can move quickly (voltage-based),
   so wired readings may differ from the last wireless reading.
-- The logger treats the presence of the wired PID (`0x3414`) as charging and
-  will output `charging=yes` even if the cmd04 flag says otherwise.
-- If you see "Unable to load the HID backend", uninstall the pure-python
-  `hid` package and reinstall:
-
-```powershell
-pip uninstall hid
-pip install hidapi
-```
 
 ## Logs
 

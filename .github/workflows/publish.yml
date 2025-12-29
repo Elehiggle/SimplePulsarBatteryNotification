@@ -21,16 +21,16 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v6
       with:
-        python-version: '3.12'
+        python-version: '3.13'
         cache: 'pip'
 
     - name: Install dependencies
       run: |
         pip install -r requirements.txt
-        pip install pyinstaller==5.13.2        # pyinstaller 6 windowed flag causes detection by Windows as a virus
+        pip install pyinstaller==6.17.0
 
     - name: Build executable
-      run: pyinstaller --icon=icon.ico --noconfirm --onefile --windowed --hidden-import "winrt.windows.foundation.collections" --name "SimplePulsarBatteryNotification" main.py
+      run: pyinstaller --icon=icon.ico --add-data "icon.png;." --noconfirm --onefile --windowed --hidden-import "winrt.windows.foundation.collections" --name "SimplePulsarBatteryNotification" main.py
       env:
         SOURCE_DATE_EPOCH: 0
 

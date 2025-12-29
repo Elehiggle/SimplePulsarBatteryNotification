@@ -6,7 +6,7 @@ import sys
 import time
 import winsound
 
-from windows_toasts import Toast, ToastDisplayImage, ToastImage, ToastImagePosition
+from windows_toasts import Toast, WindowsToaster, ToastDisplayImage, ToastImage, ToastImagePosition
 
 import pulsar_x2_battery_logger as battery_logger
 

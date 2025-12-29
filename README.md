@@ -1,4 +1,4 @@
-# Simple Pulsar Battery Notification
+﻿# Simple Pulsar Battery Notification
 
 This is a small background tool that **notifies you via a Windows toast and
 beeps** when your Pulsar X2 battery is low and **not charging**. It reads the
@@ -55,14 +55,14 @@ python .\main.py --once
 Optional one-off battery check:
 
 ```powershell
-python .\pulsar_x2_battery_logger.py --once
+python .\pulsar_battery_logger.py --once
 ```
 
 Force a specific device backend:
 
 ```powershell
-python .\pulsar_x2_battery_logger.py --backend x2cl --once
-python .\pulsar_x2_battery_logger.py --backend x2v1 --once
+python .\pulsar_battery_logger.py --backend x2cl --once
+python .\pulsar_battery_logger.py --backend x2v1 --once
 ```
 
 ## Usage via Windows binary
@@ -107,3 +107,4 @@ Contributions are welcome! If you find any issues or have suggestions for improv
 ## License
 
 This project is licensed under the MIT License.
+

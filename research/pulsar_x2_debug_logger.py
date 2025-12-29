@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Pulsar X2 cmd04 debug logger for Windows.
 Logs environment, device metadata, report descriptors, and cmd04 responses.
@@ -345,3 +345,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

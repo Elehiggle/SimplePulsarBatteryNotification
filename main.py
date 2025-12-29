@@ -1,4 +1,4 @@
-import argparse
+﻿import argparse
 import ctypes
 import logging
 import os
@@ -14,7 +14,7 @@ from windows_toasts import (
     ToastImagePosition,
 )
 
-import pulsar_x2_battery_logger as battery_logger
+import pulsar_battery_logger as battery_logger
 
 log_level_root = os.getenv("LOG_LEVEL_ROOT", "INFO").upper()
 logging.basicConfig(level=log_level_root)
@@ -198,3 +198,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

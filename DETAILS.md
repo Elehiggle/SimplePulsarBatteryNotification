@@ -1,8 +1,8 @@
-# Pulsar X2 Battery Logger (Windows)
+﻿# Pulsar X2 Battery Logger (Windows)
 
 This document contains the technical details for the Pulsar X2 battery logger
 and the notification tool (`main.py`). The primary user-facing entrypoint is
-`main.py`, which uses `pulsar_x2_battery_logger.py` under the hood. For the
+`main.py`, which uses `pulsar_battery_logger.py` under the hood. For the
 short usage guide, see `README.md`.
 
 ## Requirements
@@ -22,13 +22,13 @@ pip install -r requirements.txt
 Log once to confirm the value:
 
 ```powershell
-python .\pulsar_x2_battery_logger.py --once
+python .\pulsar_battery_logger.py --once
 ```
 
 Log every 60 seconds to `battery_log.csv`:
 
 ```powershell
-python .\pulsar_x2_battery_logger.py
+python .\pulsar_battery_logger.py
 ```
 
 ## Notifications
@@ -59,15 +59,15 @@ For an auto-start setup, place a shortcut to `main.py` in your Startup folder.
 List HID devices to find the right interface or index:
 
 ```powershell
-python .\pulsar_x2_battery_logger.py --list-devices
-python .\pulsar_x2_battery_logger.py --index 0 --once
+python .\pulsar_battery_logger.py --list-devices
+python .\pulsar_battery_logger.py --index 0 --once
 ```
 
 Force wireless or wired IDs:
 
 ```powershell
-python .\pulsar_x2_battery_logger.py --mode wireless
-python .\pulsar_x2_battery_logger.py --mode wired
+python .\pulsar_battery_logger.py --mode wireless
+python .\pulsar_battery_logger.py --mode wired
 ```
 
 ## Device backends
@@ -77,18 +77,18 @@ The logger is split into per-device modules under `pulsar_devices`:
 - `pulsar_devices\x2cl.py` for the X2 Crazylight dongle (VID `0x3710`)
 - `pulsar_devices\x2v1.py` for the X2 V1 dongle (VID `0x25a7`)
 
-By default `pulsar_x2_battery_logger.py` auto-detects which backend to use.
+By default `pulsar_battery_logger.py` auto-detects which backend to use.
 To force one:
 
 ```powershell
-python .\pulsar_x2_battery_logger.py --backend x2cl --once
-python .\pulsar_x2_battery_logger.py --backend x2v1 --once
+python .\pulsar_battery_logger.py --backend x2cl --once
+python .\pulsar_battery_logger.py --backend x2v1 --once
 ```
 
 If X2 V1 does not respond to output reports, try:
 
 ```powershell
-python .\pulsar_x2_battery_logger.py --backend x2v1 --transport feature --once
+python .\pulsar_battery_logger.py --backend x2v1 --transport feature --once
 ```
 
 ## Notes on cmd04 and warmup
@@ -189,3 +189,4 @@ The CSV log format is:
 timestamp,battery_percent
 2025-12-20T05:12:34,39
 ```
+

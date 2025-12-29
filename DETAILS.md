@@ -36,6 +36,8 @@ python .\pulsar_x2_battery_logger.py
 `main.py` runs in the background and shows a Windows toast + beep when the
 battery is low and **not charging**. It checks every 20 minutes while the
 PC is unlocked and uses a higher threshold shortly after the PC is locked.
+If the dongle stops responding (mouse idle/sleep), the notifier reuses the
+last successful reading for up to 10 minutes.
 
 Environment variables:
 
@@ -66,6 +68,27 @@ Force wireless or wired IDs:
 ```powershell
 python .\pulsar_x2_battery_logger.py --mode wireless
 python .\pulsar_x2_battery_logger.py --mode wired
+```
+
+## Device backends
+
+The logger is split into per-device modules under `pulsar_devices`:
+
+- `pulsar_devices\x2cl.py` for the X2 Crazylight dongle (VID `0x3710`)
+- `pulsar_devices\x2v1.py` for the X2 V1 dongle (VID `0x25a7`)
+
+By default `pulsar_x2_battery_logger.py` auto-detects which backend to use.
+To force one:
+
+```powershell
+python .\pulsar_x2_battery_logger.py --backend x2cl --once
+python .\pulsar_x2_battery_logger.py --backend x2v1 --once
+```
+
+If X2 V1 does not respond to output reports, try:
+
+```powershell
+python .\pulsar_x2_battery_logger.py --backend x2v1 --transport feature --once
 ```
 
 ## Notes on cmd04 and warmup
@@ -112,6 +135,23 @@ How we matched the right device:
 - The correct interface was the vendor usage page `0xff02` on interface 1
   (the same interface used by the `SET_REPORT` cmd04 traffic in the capture).
 
+## X2 V1 fork findings
+
+The `feature/x2v1` fork (https://github.com/darthsoup/SimplePulsarBatteryNotification)
+adds support for the older X2 V1 dongle and documents these observations:
+
+- X2 V1 uses VID `0x25a7` with PIDs `0xfa7c` (wireless) and `0xfa7b` (wired).
+- cmd04 responses can arrive as report ID `0x09` (not `0x08`).
+- Battery percent and charging flag stay at byte 6 and byte 7.
+- The response may show up on a different vendor usage page than the writer
+  handle (writes on `0xff02`, reads on `0xff01`), so separate reader/writer
+  handles can be required.
+- A minimal warmup sequence was observed around the first cmd04 response:
+  cmd01 (with checksum sum==0x55), cmd03, and cmd0e. The fork generates cmd01
+  dynamically and retries cmd04 after this warmup.
+- Some dongles prefer `send_feature_report` instead of `write`, so the fork
+  exposes a transport setting.
+
 ## Differences vs. the Pulsar X3 reference project
 
 The reference X3 project uses a different protocol and transport:
@@ -127,8 +167,8 @@ The reference X3 project uses a different protocol and transport:
 
 ## Notes
 
-- Wireless dongle ID: `0x3710:0x5406`
-- Wired ID: `0x3710:0x3414`
+- X2 Crazylight IDs: wireless `0x3710:0x5406`, wired `0x3710:0x3414`
+- X2 V1 IDs: wireless `0x25a7:0xfa7c`, wired `0x25a7:0xfa7b`
 - If `--once` prints "Battery read failed", run with `--list-devices` and
   try `--index` or `--interface` to target the vendor HID interface
   (usage page `0xff02`).
@@ -137,6 +177,9 @@ The reference X3 project uses a different protocol and transport:
   may fail while `--mode wired` succeeds.
 - While charging over USB, the reported percent can move quickly (voltage-based),
   so wired readings may differ from the last wireless reading.
+- On X2 V1, cmd04 responses may arrive on report ID `0x09` and a different vendor
+  usage page than the writer handle, so the logger pairs separate reader/writer
+  handles during auto-detection.
 
 ## Logs
 

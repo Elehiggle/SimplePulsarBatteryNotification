@@ -21,6 +21,9 @@ battery_level_alert_threshold = int(os.getenv("BATTERY_LEVEL_ALERT_THRESHOLD", "
 battery_level_alert_threshold_locked = int(
     os.getenv("BATTERY_LEVEL_ALERT_THRESHOLD_LOCKED", "30")
 )
+BATTERY_STATUS_CACHE_TTL = 60 * 10
+
+_LAST_BATTERY_STATUS: tuple[float, tuple[int, bool]] | None = None
 
 
 def get_foreground_window():
@@ -101,27 +104,20 @@ def send_status_toast(battery_level: int, is_charging: bool) -> None:
 
 
 def read_battery_status():
-    devices = battery_logger.list_candidate_devices("auto", None)
-    if not devices:
+    global _LAST_BATTERY_STATUS
+
+    status = battery_logger.read_battery_status()
+    if status is not None:
+        _LAST_BATTERY_STATUS = (time.monotonic(), status)
+        return status
+
+    if _LAST_BATTERY_STATUS is None:
         return None
 
-    for info in devices:
-        dev = None
-        try:
-            dev = battery_logger.open_device(info)
-            status = battery_logger.read_battery_cmd04(dev, False)
-            if status is None:
-                continue
-            battery, charging = status
-            return battery, charging
-        except (OSError, ValueError) as exc:
-            logger.debug("battery read failed err=%s", exc)
-        finally:
-            if dev is not None:
-                try:
-                    dev.close()
-                except OSError:
-                    pass
+    cached_at, cached_status = _LAST_BATTERY_STATUS
+    if time.monotonic() - cached_at <= BATTERY_STATUS_CACHE_TTL:
+        logger.debug("using cached battery status")
+        return cached_status
 
     return None
 

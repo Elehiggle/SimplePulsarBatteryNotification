@@ -8,15 +8,14 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import glob
-import importlib.machinery
-import importlib.util
 import json
 import logging
 import os
 import platform
 import sys
 import time
+
+import hid
 
 VID = 0x3710
 PIDS = {0x5406, 0x3414}
@@ -48,41 +47,6 @@ CMD04_INIT_SEQUENCE = [
     CMD04_PACKET,
     CMD04_PACKET,
 ]
-
-
-def load_hid_backend():
-    errors = []
-    try:
-        import hid as hid_module
-        if hasattr(hid_module, "device") or hasattr(hid_module, "Device"):
-            return hid_module
-        errors.append(RuntimeError("hid module lacks expected API"))
-    except Exception as exc:
-        errors.append(exc)
-
-    for base in sys.path:
-        if not base or not os.path.isdir(base):
-            continue
-        for path in glob.glob(os.path.join(base, "hid*.pyd")):
-            name = os.path.basename(path).lower()
-            if not (name == "hid.pyd" or name.startswith("hid.")):
-                continue
-            try:
-                loader = importlib.machinery.ExtensionFileLoader("hid", path)
-                spec = importlib.util.spec_from_file_location("hid", path, loader=loader)
-                module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
-                sys.modules["hid"] = module
-                return module
-            except Exception as exc:
-                errors.append(exc)
-
-    message = (
-        "Unable to load the HID backend. On Windows, run:\n"
-        "  pip uninstall hid\n"
-        "  pip install hidapi\n"
-    )
-    raise ImportError(message) from errors[-1] if errors else None
 
 
 def setup_logger(log_path: str, console_level: int) -> logging.Logger:
@@ -133,13 +97,13 @@ def format_path(path) -> str:
     return str(path)
 
 
-def open_device(hid_module, info: dict):
-    if hasattr(hid_module, "device"):
-        dev = hid_module.device()
+def open_device(info: dict):
+    if hasattr(hid, "device"):
+        dev = hid.device()
         dev.open_path(info["path"])
         return dev
-    if hasattr(hid_module, "Device"):
-        return hid_module.Device(path=info["path"])
+    if hasattr(hid, "Device"):
+        return hid.Device(path=info["path"])
     raise RuntimeError("HID backend missing device constructor")
 
 
@@ -246,7 +210,7 @@ def read_cmd04(logger, dev) -> int | None:
     return raw
 
 
-def snapshot_device(logger, hid_module, info, cached_descriptors):
+def snapshot_device(logger, info, cached_descriptors):
     log_device_info(logger, info)
 
     if info.get("usage_page") != USAGE_PAGE_VENDOR:
@@ -254,7 +218,7 @@ def snapshot_device(logger, hid_module, info, cached_descriptors):
 
     dev = None
     try:
-        dev = open_device(hid_module, info)
+        dev = open_device(info)
 
         for label, func in [
             ("manufacturer", "manufacturer"),
@@ -293,14 +257,13 @@ def snapshot_device(logger, hid_module, info, cached_descriptors):
 
 
 def run(args) -> int:
-    hid_module = load_hid_backend()
     logger = setup_logger(args.log_path, logging.INFO if args.console else logging.WARNING)
-    log_environment(logger, hid_module)
+    log_environment(logger, hid)
 
     cached_descriptors = set()
 
     while True:
-        all_devices = hid_module.enumerate()
+        all_devices = hid.enumerate()
         devices = [
             d
             for d in all_devices
@@ -309,7 +272,7 @@ def run(args) -> int:
         logger.info("scan devices_total=%d pulsar=%d", len(all_devices), len(devices))
 
         for info in devices:
-            snapshot_device(logger, hid_module, info, cached_descriptors)
+            snapshot_device(logger, info, cached_descriptors)
 
         if args.once:
             break

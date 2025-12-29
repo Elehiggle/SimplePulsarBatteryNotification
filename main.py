@@ -89,8 +89,6 @@ def read_battery_status():
             if status is None:
                 continue
             battery, charging = status
-            if battery_logger.has_wired_device() and not charging:
-                charging = True
             return battery, charging
         except (OSError, ValueError) as exc:
             logger.debug("battery read failed err=%s", exc)

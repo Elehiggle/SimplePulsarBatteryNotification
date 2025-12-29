@@ -10,55 +10,11 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import glob
-import importlib.machinery
-import importlib.util
 import os
 import sys
 import time
 
-
-def load_hid_backend():
-    errors = []
-
-    try:
-        import hid as hid_module
-        if hasattr(hid_module, "device") or hasattr(hid_module, "Device"):
-            return hid_module
-        errors.append(RuntimeError("hid module lacks expected API"))
-    except Exception as exc:
-        errors.append(exc)
-
-    for base in sys.path:
-        if not base or not os.path.isdir(base):
-            continue
-        for path in glob.glob(os.path.join(base, "hid*.pyd")):
-            name = os.path.basename(path).lower()
-            if not (name == "hid.pyd" or name.startswith("hid.")):
-                continue
-            try:
-                loader = importlib.machinery.ExtensionFileLoader("hid", path)
-                spec = importlib.util.spec_from_file_location("hid", path, loader=loader)
-                module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
-                sys.modules["hid"] = module
-                return module
-            except Exception as exc:
-                errors.append(exc)
-
-    message = (
-        "Unable to load the HID backend. On Windows, run:\n"
-        "  pip uninstall hid\n"
-        "  pip install hidapi\n"
-    )
-    raise ImportError(message) from errors[-1] if errors else None
-
-
-try:
-    hid = load_hid_backend()
-except ImportError as exc:
-    print(str(exc).strip())
-    sys.exit(1)
+import hid
 
 
 VID = 0x3710
@@ -66,6 +22,9 @@ PID_WIRELESS = 0x5406  # Pulsar 8K Dongle.
 PID_WIRED = 0x3414  # Pulsar X2 Crazylight (wired).
 PID_WIRED_X3_LHD_CL = 0x3508  # Possibly Pulsar X3 LHD CrazyLight. Unused.
 USAGE_PAGE_VENDOR = 0xFF02
+ENUMERATE_CACHE_TTL = 120.0
+
+_ENUM_CACHE: tuple[float, list[dict]] | None = None
 
 CMD03_PACKET = bytes([0x08, 0x03] + [0x00] * 14 + [0x4A])
 CMD04_PACKET = bytes([0x08, 0x04] + [0x00] * 14 + [0x49])
@@ -101,6 +60,19 @@ def format_path(path) -> str:
     return str(path)
 
 
+def enumerate_devices_cached() -> list[dict]:
+    global _ENUM_CACHE
+    now = time.monotonic()
+    if _ENUM_CACHE is not None:
+        cached_at, cached_devices = _ENUM_CACHE
+        if now - cached_at < ENUMERATE_CACHE_TTL:
+            return cached_devices
+
+    devices = hid.enumerate()
+    _ENUM_CACHE = (now, devices)
+    return devices
+
+
 def list_candidate_devices(mode: str, interface: int | None) -> list[dict]:
     allowed_pids = {PID_WIRELESS, PID_WIRED}
     if mode == "wireless":
@@ -109,7 +81,7 @@ def list_candidate_devices(mode: str, interface: int | None) -> list[dict]:
         allowed_pids = {PID_WIRED}
 
     devices = []
-    for info in hid.enumerate():
+    for info in enumerate_devices_cached():
         if info.get("vendor_id") != VID:
             continue
         if info.get("product_id") not in allowed_pids:
@@ -122,13 +94,6 @@ def list_candidate_devices(mode: str, interface: int | None) -> list[dict]:
 
     devices.sort(key=lambda item: format_path(item.get("path")))
     return devices
-
-
-def has_wired_device() -> bool:
-    for info in hid.enumerate():
-        if info.get("vendor_id") == VID and info.get("product_id") == PID_WIRED:
-            return True
-    return False
 
 
 def print_devices(devices: list[dict]) -> None:
@@ -332,11 +297,6 @@ def run_logger(args: argparse.Namespace) -> int:
                 stamp = timestamp(args.utc)
                 log_handle.write(f"{stamp},{battery}\n")
                 log_handle.flush()
-                wired_present = has_wired_device()
-                if wired_present and not charging:
-                    if args.debug:
-                        print("charging override: wired device present")
-                    charging = True
                 charging_str = "yes" if charging else "no"
                 print(f"{stamp} battery={battery}% charging={charging_str}")
                 if args.once:

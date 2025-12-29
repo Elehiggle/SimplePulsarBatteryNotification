@@ -77,29 +77,53 @@ def send_status_toast(battery_level: int, is_charging: bool) -> None:
 
 
 def read_battery_status():
-    devices = battery_logger.list_candidate_devices("auto", None)
+    devices = battery_logger.list_candidate_devices(
+        "auto",
+        None,
+        vid=battery_logger.VID,
+        pid_wireless=battery_logger.PID_WIRELESS,
+        pid_wired=battery_logger.PID_WIRED,
+        usage_page=battery_logger.USAGE_PAGE_VENDOR,
+    )
     if not devices:
         return None
 
-    for info in devices:
-        dev = None
-        try:
-            dev = battery_logger.open_device(info)
-            status = battery_logger.read_battery_cmd04(dev, False)
-            if status is None:
-                continue
-            battery, charging = status
-            if battery_logger.has_wired_device() and not charging:
-                charging = True
-            return battery, charging
-        except (OSError, ValueError) as exc:
-            logger.debug("battery read failed err=%s", exc)
-        finally:
-            if dev is not None:
-                try:
-                    dev.close()
-                except OSError:
-                    pass
+    dev_write = None
+    dev_read = None
+    try:
+        dev_write, dev_read, _, _ = battery_logger.select_device(
+            devices,
+            index=None,
+            debug=False,
+            transport="auto",
+        )
+        if dev_write is None or dev_read is None:
+            return None
+        status = battery_logger.read_battery_cmd04(
+            dev_write,
+            debug=False,
+            transport="auto",
+            reader=dev_read,
+        )
+        if status is None:
+            return None
+        battery, charging = status
+        if battery_logger.has_wired_device() and not charging:
+            charging = True
+        return battery, charging
+    except (OSError, ValueError) as exc:
+        logger.debug("battery read failed err=%s", exc)
+    finally:
+        if dev_write is not None:
+            try:
+                dev_write.close()
+            except OSError:
+                pass
+        if dev_read is not None and dev_read is not dev_write:
+            try:
+                dev_read.close()
+            except OSError:
+                pass
 
     return None
 

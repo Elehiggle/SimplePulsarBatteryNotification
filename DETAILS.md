@@ -96,21 +96,62 @@ Tools and workflow:
 
 Key findings:
 
-- **Outbound cmd04** is a HID class `SET_REPORT` to interface 1:
+- **Outbound cmd04** is a HID class `SET_REPORT`:
   `0804000000000000000000000000000049`
-- **Inbound cmd04 response** is an interrupt IN report:
-  `08040000000223...` where byte 6 (`0x23`) is the battery percent (35% in
+- **Inbound cmd04 response** on the X2 V1 + dongle in this workspace uses report ID `0x09`:
+  `0904000000025a...` where byte 6 (`0x5a`) is the battery percent (90% in
   the capture).
 - **Charging flag** lives at byte 7: `0x00` when idle, `0x01` when charging
   (confirmed by comparing wireless idle vs. wireless charging captures).
-- The battery response lives on the vendor usage page `0xff02`, endpoint `0x82`.
+- The battery response lives on a vendor usage page collection (varies by device/firmware), endpoint `0x82`.
+
+## Warmup / initialization observations (X2 V1 + dongle)
+
+In `logs/usbcap_wireless.pcap`, the official software sends additional commands
+around the first successful cmd04 response:
+
+- `0803...4a` (cmd03) with an interrupt-IN response `0903...`
+- `080e...3f` (cmd0e) with an interrupt-IN response `090e...`
+- A cmd01 packet `0801000000083c31275b...55` whose middle bytes vary.
+  The structure appears to be:
+
+  - Prefix: `080100000008`
+  - 4-byte session/nonce value
+  - 6 bytes of `00`
+  - 1-byte check byte such that `(sum(packet_bytes) & 0xFF) == 0x55`
+
+  This means cmd01 can be generated dynamically (pick any 4-byte nonce and set
+  the last byte to make the sum equal `0x55`).
+
+The logger therefore sends a generated cmd01 before the minimal warmup and then
+retries cmd04.
 
 How we matched the right device:
 
-- Used `hid.enumerate()` and `--list-devices` to list HID interfaces for
-  VID `0x3710` and PID `0x5406` (wireless) / `0x3414` (wired).
-- The correct interface was the vendor usage page `0xff02` on interface 1
-  (the same interface used by the `SET_REPORT` cmd04 traffic in the capture).
+- Used `hid.enumerate()` and `--list-devices` to list HID interfaces.
+- For the Pulsar X2 V1 hardware tested in this workspace:
+  - VID `0x25a7`
+  - PID `0xfa7c` (wireless)
+  - PID `0xfa7b` (wired)
+  - Multiple vendor usage pages exist on interface 1 (`0xff01`..`0xff04`, etc.).
+  - The cmd04 traffic was observed on a vendor usage page interface; the logger can probe all vendor pages by default.
+
+Live confirmation on this machine (Fusion closed):
+
+- cmd04 writes succeeded on usage page `0xff02`
+- cmd04 interrupt-IN responses (report ID `0x09`) arrived on usage page `0xff01`
+
+## Capture results (X2 V1 wireless, 0x25a7:0xfa7c)
+
+Using `logs/usbcap_wireless.pcap`:
+
+- **Outbound cmd04** payload observed:
+  `0804000000000000000000000000000049`
+- **Inbound cmd04 response** observed on interrupt IN endpoint `0x82`:
+  `0904000000025a00...`
+  - Response report ID is `0x09` (not `0x08`)
+  - Battery percent is still at byte 6 (`0x5a` = 90%)
+  - Charging flag is still at byte 7 (`0x00` idle, `0x01` charging)
 
 ## Differences vs. the Pulsar X3 reference project
 

@@ -6,7 +6,7 @@ import sys
 import time
 import winsound
 
-from windows_toasts import Toast, WindowsToaster
+from windows_toasts import Toast, ToastDisplayImage, ToastImage, ToastImagePosition
 
 import pulsar_x2_battery_logger as battery_logger
 
@@ -27,9 +27,33 @@ def get_foreground_window():
     return ctypes.windll.user32.GetForegroundWindow()
 
 
+def _resource_path(filename: str) -> str:
+    base = getattr(sys, "_MEIPASS", None)
+    if base:
+        return os.path.join(base, filename)
+    return os.path.join(os.path.dirname(__file__), filename)
+
+
+def _add_toast_icon(toast: Toast) -> None:
+    icon_path = _resource_path("icon.png")
+    if not os.path.exists(icon_path):
+        return
+
+    try:
+        toast.AddImage(
+            ToastDisplayImage(
+                ToastImage(icon_path),
+                position=ToastImagePosition.AppLogo,
+            )
+        )
+    except Exception as exc:
+        logger.debug("toast icon attach failed path=%s err=%s", icon_path, exc)
+
+
 def show_toast(text_fields, beep: bool) -> None:
     toast = Toast()
     toast.text_fields = text_fields
+    _add_toast_icon(toast)
     max_retries = 5
     retries = 0
 

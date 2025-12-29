@@ -84,7 +84,7 @@ Pulsar software and inspecting USB HID transactions.
 
 Tools and workflow:
 
-- **USBPcap** (driver + `USBPcapCMD.exe`) to capture USB traffic on Windows.
+- **USBPcap** (driver + `USBPcapCMD.exe`) to capture USB traffic on Windows. (e.g. & "C:\Program Files\USBPcap\USBPcapCMD.exe" -d \\.\USBPcap1 -o logs\capture.pcap -A --inject-descriptors - but check the correct USBPcap device number, one could do that by running USBPcapCMD.exe without arguments, then you'll see a device list, and to keep captured files small, its recommended to directly plug the mouse/dongle into the PC, no hub in between)
 - **Wireshark / tshark** to inspect the capture. We used:
   - `tshark` to locate `SET_REPORT` control transfers (`URB_FUNCTION_CLASS_INTERFACE`)
     with report ID `0x08` and to find the `HID Data` responses containing the

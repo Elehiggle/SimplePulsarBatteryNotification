@@ -107,6 +107,23 @@ def open_device(info: dict):
     raise RuntimeError("HID backend missing device constructor")
 
 
+def enumerate_devices(vendor_id: int = 0, product_id: int = 0) -> list[dict]:
+    try:
+        return hid.enumerate(vendor_id, product_id)
+    except TypeError:
+        devices = hid.enumerate()
+        if vendor_id == 0 and product_id == 0:
+            return devices
+        filtered = []
+        for info in devices:
+            if vendor_id and info.get("vendor_id") != vendor_id:
+                continue
+            if product_id and info.get("product_id") != product_id:
+                continue
+            filtered.append(info)
+        return filtered
+
+
 def safe_call(logger, label: str, func, *args):
     try:
         return func(*args), None
@@ -263,13 +280,15 @@ def run(args) -> int:
     cached_descriptors = set()
 
     while True:
-        all_devices = hid.enumerate()
+        all_devices = enumerate_devices(VID, 0)
         devices = [
             d
             for d in all_devices
             if d.get("vendor_id") == VID and d.get("product_id") in PIDS
         ]
-        logger.info("scan devices_total=%d pulsar=%d", len(all_devices), len(devices))
+        logger.info(
+            "scan vendor_devices_total=%d pulsar=%d", len(all_devices), len(devices)
+        )
 
         for info in devices:
             snapshot_device(logger, info, cached_descriptors)

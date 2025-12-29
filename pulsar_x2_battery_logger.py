@@ -22,9 +22,9 @@ PID_WIRELESS = 0x5406  # Pulsar 8K Dongle.
 PID_WIRED = 0x3414  # Pulsar X2 Crazylight (wired).
 PID_WIRED_X3_LHD_CL = 0x3508  # Possibly Pulsar X3 LHD CrazyLight. Unused.
 USAGE_PAGE_VENDOR = 0xFF02
-ENUMERATE_CACHE_TTL = 120.0
+ENUMERATE_CACHE_TTL = 60.0
 
-_ENUM_CACHE: tuple[float, list[dict]] | None = None
+_ENUM_CACHE: dict[tuple[int, int], tuple[float, list[dict]]] = {}
 
 CMD03_PACKET = bytes([0x08, 0x03] + [0x00] * 14 + [0x4A])
 CMD04_PACKET = bytes([0x08, 0x04] + [0x00] * 14 + [0x49])
@@ -60,16 +60,34 @@ def format_path(path) -> str:
     return str(path)
 
 
-def enumerate_devices_cached() -> list[dict]:
-    global _ENUM_CACHE
+def enumerate_devices(vendor_id: int = 0, product_id: int = 0) -> list[dict]:
+    try:
+        return hid.enumerate(vendor_id, product_id)
+    except TypeError:
+        devices = hid.enumerate()
+        if vendor_id == 0 and product_id == 0:
+            return devices
+        filtered = []
+        for info in devices:
+            if vendor_id and info.get("vendor_id") != vendor_id:
+                continue
+            if product_id and info.get("product_id") != product_id:
+                continue
+            filtered.append(info)
+        return filtered
+
+
+def enumerate_devices_cached(vendor_id: int = 0, product_id: int = 0) -> list[dict]:
     now = time.monotonic()
-    if _ENUM_CACHE is not None:
-        cached_at, cached_devices = _ENUM_CACHE
+    key = (vendor_id, product_id)
+    cached = _ENUM_CACHE.get(key)
+    if cached is not None:
+        cached_at, cached_devices = cached
         if now - cached_at < ENUMERATE_CACHE_TTL:
             return cached_devices
 
-    devices = hid.enumerate()
-    _ENUM_CACHE = (now, devices)
+    devices = enumerate_devices(vendor_id, product_id)
+    _ENUM_CACHE[key] = (now, devices)
     return devices
 
 
@@ -81,7 +99,7 @@ def list_candidate_devices(mode: str, interface: int | None) -> list[dict]:
         allowed_pids = {PID_WIRED}
 
     devices = []
-    for info in enumerate_devices_cached():
+    for info in enumerate_devices_cached(VID, 0):
         if info.get("vendor_id") != VID:
             continue
         if info.get("product_id") not in allowed_pids:

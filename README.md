@@ -12,7 +12,7 @@ that the dongle uses HID control/interrupt traffic for these queries.
 
 - Low-battery notifications (toast + beeps)
 - Different thresholds when the PC is locked vs unlocked
-- Works with the Pulsar X2 Crazylight wireless dongle on Windows
+- Works with Pulsar X2 dongles on Windows (incl. the original X2 Crazylight dongle; X2 V1 dongle supported via auto-detection)
 
 ## Prerequisites
 
@@ -81,8 +81,8 @@ SimplePulsarBatteryNotification.exe --once
 
 ## Notes
 
-- This is specifically for the Pulsar X2 Crazylight. I do not know if other
-  models work yet. Pull requests are welcome.
+- Originally built for the Pulsar X2 Crazylight dongle; the logger now includes
+  auto-detection for multiple Pulsar dongle VID/PID variants.
 - Battery readings can jump upward shortly after plugging in a charging cable
   and stay higher even after unplugging. The dongle appears to report a raw
   battery value that can lag or differ from the official software, so treat

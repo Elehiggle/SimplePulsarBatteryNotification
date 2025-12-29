@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""Pulsar X2 battery logger for Windows (wired or wireless).
+"""Pulsar battery logger for Windows.
 
-Uses vendor HID report 0x08 command 0x04; on this user's hardware the
-corresponding response is report 0x09 with battery percent at byte 6.
+The dongles expose vendor HID collections. Battery is read via report 0x08
+command 0x04 and returned on an interrupt-IN input report (commonly report
+0x08 or 0x09) with battery % at byte 6 and charging flag at byte 7.
+
+This module keeps a small auto-detection list so the original Pulsar X2
+Crazylight dongle and the Pulsar X2 V1 dongle (different VID/PID) both work.
 """
 
 from __future__ import annotations
@@ -64,20 +68,31 @@ except ImportError as exc:
 HidDevice = Any
 
 
-# Defaults for Pulsar X2 V1 (user hardware in this workspace).
-# If these do not match your setup, override via CLI flags.
-VID = 0x25A7
-PID_WIRED = 0xFA7B
-PID_WIRELESS = 0xFA7C
-PID_WIRED_X3_LHD_CL = 0x3508  # Possibly Pulsar X3 LHD CrazyLight. Unused.
+class DeviceProfile:
+    def __init__(self, name: str, vid: int, pid_wireless: int, pid_wired: int):
+        self.name = name
+        self.vid = vid
+        self.pid_wireless = pid_wireless
+        self.pid_wired = pid_wired
 
-# Vendor usage page used by the battery interface.
-# Different dongles/firmware expose multiple vendor collections (e.g. 0xff01..0xff04).
-# Default is None to probe all; optionally pass --usage-page to narrow.
+
+# Known working profiles.
+# - Original project target: Pulsar X2 Crazylight dongle (VID 0x3710)
+# - This workspace: Pulsar X2 V1 dongle (VID 0x25a7)
+KNOWN_PROFILES: list[DeviceProfile] = [
+    DeviceProfile("x2_crazylight", vid=0x3710, pid_wireless=0x5406, pid_wired=0x3414),
+    DeviceProfile("x2_v1", vid=0x25A7, pid_wireless=0xFA7C, pid_wired=0xFA7B),
+]
+
+# Back-compat module constants (some callers import these).
+VID = KNOWN_PROFILES[0].vid
+PID_WIRELESS = KNOWN_PROFILES[0].pid_wireless
+PID_WIRED = KNOWN_PROFILES[0].pid_wired
+
+# Optional vendor usage-page filter. Default: None (probe all).
 USAGE_PAGE_VENDOR: int | None = None
 
 OUTPUT_REPORT_ID = 0x08
-# The official software's cmd04 response on this hardware uses report ID 0x09.
 INPUT_REPORT_IDS = {0x08, 0x09}
 DEFAULT_INPUT_REPORT_ID = 0x09
 
@@ -105,37 +120,16 @@ def build_cmd01_packet(nonce: int | bytes | None = None) -> bytes:
     )
     chk = (CMD01_TARGET_SUM - (sum(body) & 0xFF)) & 0xFF
     return body + bytes([chk])
-# Init sequence captured from Pulsar Fusion to enable cmd04 responses.
-CMD01_PACKET_A = bytes.fromhex("0801000000088e0c4d4c00000000000011")
-CMD01_PACKET_B = bytes.fromhex("0801000000089505dd4b00000000000082")
-CMD02_PACKET = bytes.fromhex("0802000000010100000000000000000049")
-CMD04_INIT_SEQUENCE = [
-    CMD01_PACKET_A,
-    CMD03_PACKET,
-    CMD03_PACKET,
-    CMD03_PACKET,
-    CMD01_PACKET_A,
-    CMD03_PACKET,
-    CMD03_PACKET,
-    CMD01_PACKET_A,
-    CMD03_PACKET,
-    CMD01_PACKET_B,
-    CMD03_PACKET,
-    CMD03_PACKET,
-    CMD03_PACKET,
-    CMD02_PACKET,
-    CMD03_PACKET,
-    CMD03_PACKET,
-    CMD04_PACKET,
-    CMD04_PACKET,
-]
 
 # Minimal warmup sequence observed in the user's USB capture around cmd04.
 # We prepend a generated cmd01 packet to replicate Fusion's startup behavior.
+CMD0E_PACKET = bytes.fromhex("080e00000000000000000000000000003f")
+
+# Minimal warmup that helps some dongles respond without the official software.
 CMD04_WARMUP_MINIMAL = [
-    CMD03_PACKET,
-    CMD04_PACKET,
-    bytes.fromhex("080e00000000000000000000000000003f"),
+    build_cmd01_packet,
+    lambda: CMD03_PACKET,
+    lambda: CMD0E_PACKET,
 ]
 
 
@@ -153,21 +147,29 @@ def list_candidate_devices(
     pid_wired: int | None = None,
     usage_page: int | None = USAGE_PAGE_VENDOR,
 ) -> list[dict]:
-    vid = VID if vid is None else vid
-    pid_wireless = PID_WIRELESS if pid_wireless is None else pid_wireless
-    pid_wired = PID_WIRED if pid_wired is None else pid_wired
+    def wanted_pairs() -> list[tuple[int, int]]:
+        # Explicit override.
+        if vid is not None and pid_wireless is not None and pid_wired is not None:
+            if mode == "wireless":
+                return [(vid, pid_wireless)]
+            if mode == "wired":
+                return [(vid, pid_wired)]
+            return [(vid, pid_wireless), (vid, pid_wired)]
 
-    allowed_pids = {pid_wireless, pid_wired}
-    if mode == "wireless":
-        allowed_pids = {pid_wireless}
-    elif mode == "wired":
-        allowed_pids = {pid_wired}
+        # Auto across known profiles.
+        pairs: list[tuple[int, int]] = []
+        for profile in KNOWN_PROFILES:
+            if mode != "wired":
+                pairs.append((profile.vid, profile.pid_wireless))
+            if mode != "wireless":
+                pairs.append((profile.vid, profile.pid_wired))
+        return pairs
 
-    devices = []
+    allowed = set(wanted_pairs())
+    devices: list[dict] = []
     for info in hid.enumerate():
-        if info.get("vendor_id") != vid:
-            continue
-        if info.get("product_id") not in allowed_pids:
+        pair = (info.get("vendor_id"), info.get("product_id"))
+        if pair not in allowed:
             continue
         if interface is not None and info.get("interface_number") != interface:
             continue
@@ -186,8 +188,8 @@ def list_candidate_devices(
         is_vendor_page = isinstance(up, int) and up >= 0xFF00
         prefer_vendor_page = 0 if is_vendor_page else 1
 
-        # Within vendor pages, ff01..ff04 are common on Pulsar dongles.
-        # Prefer the known working pairing on this machine: writes on ff02, reads on ff01.
+        # Common vendor pages on Pulsar dongles.
+        # Heuristic: writes often work on ff02, and on some dongles responses arrive on ff01.
         vendor_rank = {0xFF02: 0, 0xFF01: 1, 0xFF03: 2, 0xFF04: 3}
         prefer_common_vendor = 0 if up in vendor_rank else 1
         vendor_order = vendor_rank.get(up, 99)
@@ -209,10 +211,16 @@ def list_candidate_devices(
 
 
 def has_wired_device(vid: int | None = None, pid_wired: int | None = None) -> bool:
-    vid = VID if vid is None else vid
-    pid_wired = PID_WIRED if pid_wired is None else pid_wired
+    # If explicit IDs are provided, check those. Otherwise, check across known profiles.
+    if vid is not None and pid_wired is not None:
+        for info in hid.enumerate():
+            if info.get("vendor_id") == vid and info.get("product_id") == pid_wired:
+                return True
+        return False
+
+    wired_pairs = {(p.vid, p.pid_wired) for p in KNOWN_PROFILES}
     for info in hid.enumerate():
-        if info.get("vendor_id") == vid and info.get("product_id") == pid_wired:
+        if (info.get("vendor_id"), info.get("product_id")) in wired_pairs:
             return True
     return False
 
@@ -285,63 +293,19 @@ def parse_cmd04_payload(payload: bytes) -> tuple[int, bool] | None:
 
 
 def _supports_feature_reports(dev: object) -> bool:
-    return hasattr(dev, "send_feature_report") and hasattr(dev, "get_feature_report")
+    return hasattr(dev, "send_feature_report")
 
 
-def _send_cmd04_output(dev: HidDevice) -> None:
-    # Some dongles expose no interrupt OUT endpoint; writes then fail (often
-    # returning -1). In captures, the official software uses HID class
-    # SET_REPORT control transfers; on Windows/hidapi that often maps better to
-    # send_feature_report than to write().
-    result = dev.write(CMD04_PACKET)
+def _send_report(dev: HidDevice, payload: bytes, transport: str) -> None:
+    """Send a report buffer (payload already includes report ID as first byte)."""
+    use_feature = transport == "feature" or (transport == "auto" and _supports_feature_reports(dev))
+    if use_feature and hasattr(dev, "send_feature_report"):
+        dev.send_feature_report(payload)
+        return
+
+    result = dev.write(payload)
     if isinstance(result, int) and result < 0:
-        if _supports_feature_reports(dev):
-            dev.send_feature_report(CMD04_PACKET)
-            return
         raise OSError("HID write failed")
-
-
-def _send_cmd04_feature(dev: HidDevice) -> None:
-    # hidapi expects the report ID as the first byte in the buffer.
-    dev.send_feature_report(CMD04_PACKET)
-
-
-def _read_cmd04_feature_get_report(dev: HidDevice, timeout: float, debug: bool) -> bytes | None:
-    """Fallback reader using GET_REPORT(feature).
-
-    Note: On the user's Pulsar X2 V1 capture, cmd04 responses arrive on interrupt-IN
-    as report ID 0x09, not via GET_REPORT. Some devices/firmware may still support
-    returning the response as a feature report.
-    """
-
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        try:
-            data = dev.get_feature_report(OUTPUT_REPORT_ID, 64)
-        except (OSError, ValueError) as exc:
-            if debug:
-                print(f"cmd04 feature read_failed err={exc}")
-            return None
-        if not data:
-            time.sleep(0.05)
-            continue
-        payload = normalize_input_report(data)
-        if len(payload) < 2:
-            time.sleep(0.05)
-            continue
-        # Some backends may include report ID 0x08 or 0x09 here; accept both.
-        if payload[0] not in INPUT_REPORT_IDS:
-            if debug:
-                print(f"cmd04 feature skip data={payload.hex()}")
-            time.sleep(0.05)
-            continue
-        if payload[1] != 0x04:
-            if debug:
-                print(f"cmd04 feature skip cmd=0x{payload[1]:02x} data={payload.hex()}")
-            time.sleep(0.05)
-            continue
-        return payload
-    return None
 
 
 def read_battery_cmd04(
@@ -403,120 +367,38 @@ def read_battery_cmd04(
                 except (OSError, ValueError):
                     pass
 
-    def attempt_cmd04_output(timeout: float) -> bytes | None:
-        _send_cmd04_output(dev)
-        # Small delay improves reliability on some dongles.
+    def attempt_cmd04(timeout: float) -> bytes | None:
+        _send_report(dev, CMD04_PACKET, transport=transport)
         time.sleep(0.02)
         return read_cmd(0x04, timeout, log_other=True)
 
-    def attempt_cmd04_feature(timeout: float) -> bytes | None:
-        if not _supports_feature_reports(dev):
-            return None
-        _send_cmd04_feature(dev)
-        # Primary path: response is an interrupt-IN input report (matches USB capture).
-        payload = read_cmd(0x04, timeout, log_other=True)
-        if payload is not None:
-            return payload
-
-        # Do not use GET_REPORT(feature) by default.
-        # On the user's Pulsar X2 V1 dongle, GET_REPORT frequently returns errors or
-        # all-zero payloads and does not reflect the real interrupt-IN response path.
-        return None
-
-    payload = None
-    if transport == "output":
-        try:
-            payload = attempt_cmd04_output(0.8)
-        except (OSError, ValueError) as exc:
-            if debug:
-                print(f"cmd04 output failed err={exc}")
-            payload = None
-    elif transport == "feature":
-        try:
-            payload = attempt_cmd04_feature(0.8)
-        except (OSError, ValueError) as exc:
-            if debug:
-                print(f"cmd04 feature failed err={exc}")
-            payload = None
-    else:
-        # auto: try output first, then feature.
-        try:
-            payload = attempt_cmd04_output(0.6)
-        except (OSError, ValueError) as exc:
-            if debug:
-                print(f"cmd04 output failed err={exc}")
-            payload = None
-        if payload is None:
-            try:
-                payload = attempt_cmd04_feature(0.8)
-            except (OSError, ValueError) as exc:
-                if debug:
-                    print(f"cmd04 feature failed err={exc}")
-                payload = None
-
-    if payload is None:
-        # Retry a couple times before doing any warmup.
-        for _ in range(2):
-            try:
-                payload = attempt_cmd04_output(0.6) if transport != "feature" else attempt_cmd04_feature(0.8)
-            except (OSError, ValueError):
-                payload = None
-            if payload is not None:
-                break
+    payload: bytes | None = None
+    try:
+        payload = attempt_cmd04(0.8)
+    except (OSError, ValueError) as exc:
+        if debug:
+            print(f"cmd04 send failed err={exc}")
+        payload = None
 
     if payload is None:
         if debug:
             print("cmd04 minimal warmup")
 
-        warmup_sequence = [build_cmd01_packet()] + CMD04_WARMUP_MINIMAL
-        for warmup_payload in warmup_sequence:
+        for warmup_item in CMD04_WARMUP_MINIMAL:
+            warmup_payload = warmup_item() if callable(warmup_item) else warmup_item
             try:
-                # Prefer feature reports when available (matches SET_REPORT control transfers).
-                if _supports_feature_reports(dev):
-                    dev.send_feature_report(warmup_payload)
-                else:
-                    result = dev.write(warmup_payload)
-                    if isinstance(result, int) and result < 0:
-                        raise OSError("HID write failed")
+                _send_report(dev, warmup_payload, transport=transport)
             except (OSError, ValueError) as exc:
                 if debug:
                     print(f"cmd04 warmup write_failed err={exc}")
                 break
             time.sleep(0.01)
 
-        # Try again after minimal warmup.
         try:
-            payload = attempt_cmd04_output(1.2) if transport != "feature" else attempt_cmd04_feature(1.2)
+            payload = attempt_cmd04(1.2)
         except (OSError, ValueError) as exc:
             if debug:
                 print(f"cmd04 post-warmup failed err={exc}")
-            payload = None
-
-    if payload is None:
-        # Last resort: the original (project author's) full init sequence.
-        if debug:
-            print("cmd04 init sequence")
-        for payload_init in CMD04_INIT_SEQUENCE:
-            try:
-                if payload_init[:2] == bytes([OUTPUT_REPORT_ID, 0x01]):
-                    payload_init = build_cmd01_packet()
-                if _supports_feature_reports(dev):
-                    dev.send_feature_report(payload_init)
-                else:
-                    result = dev.write(payload_init)
-                    if isinstance(result, int) and result < 0:
-                        raise OSError("HID write failed")
-            except (OSError, ValueError) as exc:
-                if debug:
-                    print(f"cmd04 init write_failed err={exc}")
-                break
-            time.sleep(0.01)
-
-        try:
-            payload = attempt_cmd04_output(2.0) if transport != "feature" else attempt_cmd04_feature(2.0)
-        except (OSError, ValueError) as exc:
-            if debug:
-                print(f"cmd04 post-init failed err={exc}")
             payload = None
 
     if payload is None:
@@ -540,204 +422,85 @@ def select_device(
     transport: str,
 ) -> tuple[HidDevice | None, HidDevice | None, dict | None, dict | None]:
     all_devices = list(devices)
+    if not all_devices:
+        return None, None, None, None
 
-    writer_candidates = all_devices
     if index is not None:
         if index < 0 or index >= len(all_devices):
             print(f"Invalid --index {index}; {len(all_devices)} device(s) available.")
             return None, None, None, None
         writer_candidates = [all_devices[index]]
+    else:
+        writer_candidates = list(all_devices)
 
-    # Fast-path: known working pairing on this Pulsar X2 V1 + dongle
-    # (writes on usage page ff02, responses on interrupt-IN usage page ff01).
-    if index is None and all_devices:
-        def find_by_usage_page(items: list[dict], usage_page: int) -> dict | None:
-            for it in items:
-                if it.get("usage_page") == usage_page:
-                    return it
-            return None
-
-        writer_info = find_by_usage_page(all_devices, 0xFF02)
-        if writer_info is not None:
-            # Build a broad reader pool for the same VID/PID(s)
-            reader_pool = []
-            try:
-                vid = writer_info.get("vendor_id")
-                allowed_pids = {d.get("product_id") for d in all_devices}
-                for info in hid.enumerate():
-                    if info.get("vendor_id") != vid:
-                        continue
-                    if info.get("product_id") not in allowed_pids:
-                        continue
-                    reader_pool.append(info)
-            except Exception:
-                reader_pool = list(all_devices)
-
-            reader_info = find_by_usage_page(reader_pool, 0xFF01)
-            if reader_info is not None:
-                w = None
-                r = None
-                success = False
-                try:
-                    w = open_device(writer_info)
-                    r = open_device(reader_info)
-                    status = read_battery_cmd04(w, debug, transport=transport, reader=r)
-                    if status is not None:
-                        success = True
-                        if debug:
-                            print(
-                                "selected fast-path split handles "
-                                f"writer={format_path(writer_info.get('path'))} "
-                                f"reader={format_path(reader_info.get('path'))}"
-                            )
-                        return w, r, writer_info, reader_info
-                except (OSError, ValueError):
-                    pass
-                finally:
-                    if not success:
-                        if w is not None:
-                            try:
-                                w.close()
-                            except OSError:
-                                pass
-                        if r is not None:
-                            try:
-                                r.close()
-                            except OSError:
-                                pass
-
-    for info in writer_candidates:
-        dev = None
+    def probe_pair(writer_info: dict, reader_info: dict) -> tuple[HidDevice | None, HidDevice | None]:
+        w = None
+        r = None
         try:
-            dev = open_device(info)
-            status = read_battery_cmd04(dev, debug, transport=transport)
-            if status is not None:
-                if debug:
-                    print(f"selected path={format_path(info.get('path'))}")
-                return dev, dev, info, info
-        except (OSError, ValueError) as exc:
-            if debug:
-                print(f"probe_failed path={format_path(info.get('path'))} err={exc}")
-        if dev is not None:
-            try:
-                dev.close()
-            except OSError:
-                pass
-
-    # Fallback: try split reader/writer handles across HID paths.
-    # Important: on Windows, interrupt-IN reports may arrive on a different HID
-    # collection than the one that accepts the vendor SET_REPORT writes.
-    # Therefore, build a broad reader pool across all collections for the same
-    # VID/PID(s), even if the user filtered the initial list by --interface or
-    # --usage-page.
-
-    reader_pool = list(all_devices)
-    if all_devices:
-        try:
-            vid = all_devices[0].get("vendor_id")
-            allowed_pids = {d.get("product_id") for d in all_devices}
-            reader_pool = []
-            for info in hid.enumerate():
-                if info.get("vendor_id") != vid:
-                    continue
-                if info.get("product_id") not in allowed_pids:
-                    continue
-                reader_pool.append(info)
-        except Exception:
-            reader_pool = list(all_devices)
-
-    # Prefer pairing within the same interface number first, then widen.
-    for writer_info in writer_candidates:
-        writer = None
-        try:
-            writer = open_device(writer_info)
+            w = open_device(writer_info)
+            r = w if writer_info.get("path") == reader_info.get("path") else open_device(reader_info)
+            status = read_battery_cmd04(w, debug, transport=transport, reader=r)
+            if status is None:
+                return None, None
+            return w, r
         except (OSError, ValueError):
-            continue
-
-        writer_iface = writer_info.get("interface_number")
-
-        def try_readers(readers: list[dict]) -> tuple[HidDevice | None, dict | None]:
-            for reader_info in readers:
-                reader = None
+            if w is not None:
                 try:
-                    if debug:
-                        w_up = writer_info.get("usage_page")
-                        r_up = reader_info.get("usage_page")
-                        w_up_s = "None" if w_up is None else f"0x{w_up:04x}"
-                        r_up_s = "None" if r_up is None else f"0x{r_up:04x}"
-                        print(
-                            "probe_split "
-                            f"writer_iface={writer_iface} writer_up={w_up_s} "
-                            f"reader_iface={reader_info.get('interface_number')} reader_up={r_up_s}"
-                        )
-
-                    reader = open_device(reader_info)
-                    status = read_battery_cmd04(
-                        writer,
-                        debug,
-                        transport=transport,
-                        reader=reader,
-                    )
-                    if status is not None:
-                        return reader, reader_info
-                except (OSError, ValueError) as exc:
-                    if debug:
-                        print(
-                            "probe_failed_split "
-                            f"writer={format_path(writer_info.get('path'))} "
-                            f"reader={format_path(reader_info.get('path'))} err={exc}"
-                        )
-                finally:
-                    if reader is not None:
-                        try:
-                            reader.close()
-                        except OSError:
-                            pass
+                    w.close()
+                except OSError:
+                    pass
+            if r is not None and r is not w:
+                try:
+                    r.close()
+                except OSError:
+                    pass
             return None, None
 
-        # Pass 1: same interface
-        same_iface_readers = (
-            [r for r in reader_pool if writer_iface is None or r.get("interface_number") == writer_iface]
-            if reader_pool
-            else []
-        )
-        reader_dev, reader_info = try_readers(same_iface_readers)
-        if reader_dev is not None and reader_info is not None:
-            # Re-open the selected reader for returning (we closed it in try_readers).
-            try:
-                reader_dev = open_device(reader_info)
-            except (OSError, ValueError):
-                reader_dev = None
-            if reader_dev is not None:
+    # Build a broad reader pool for the same VID/PIDs (covers split collections).
+    allowed_pairs = {(d.get("vendor_id"), d.get("product_id")) for d in all_devices}
+    reader_pool = [info for info in hid.enumerate() if (info.get("vendor_id"), info.get("product_id")) in allowed_pairs]
+
+    # Heuristic order for readers: prefer ff01, then same usage page, then other vendor pages.
+    def reader_sort_key(item: dict, writer_up: int | None):
+        up = item.get("usage_page")
+        is_vendor = isinstance(up, int) and up >= 0xFF00
+        prefer_ff01 = 0 if up == 0xFF01 else 1
+        prefer_same = 0 if (writer_up is not None and up == writer_up) else 1
+        prefer_vendor = 0 if is_vendor else 1
+        return (prefer_ff01, prefer_same, prefer_vendor, format_path(item.get("path")))
+
+    for writer_info in writer_candidates:
+        writer_up = writer_info.get("usage_page")
+        readers = sorted(reader_pool, key=lambda r: reader_sort_key(r, writer_up))
+
+        # Try same path first.
+        w, r = probe_pair(writer_info, writer_info)
+        if w is not None and r is not None:
+            if debug:
+                print(f"selected path={format_path(writer_info.get('path'))}")
+            return w, r, writer_info, writer_info
+
+        # Then try split pairs.
+        for reader_info in readers:
+            if debug:
+                w_up = writer_info.get("usage_page")
+                r_up = reader_info.get("usage_page")
+                w_up_s = "None" if w_up is None else f"0x{w_up:04x}"
+                r_up_s = "None" if r_up is None else f"0x{r_up:04x}"
+                print(
+                    "probe_split "
+                    f"writer_iface={writer_info.get('interface_number')} writer_up={w_up_s} "
+                    f"reader_iface={reader_info.get('interface_number')} reader_up={r_up_s}"
+                )
+            w, r = probe_pair(writer_info, reader_info)
+            if w is not None and r is not None:
                 if debug:
                     print(
                         "selected split handles "
                         f"writer={format_path(writer_info.get('path'))} "
                         f"reader={format_path(reader_info.get('path'))}"
                     )
-                return writer, reader_dev, writer_info, reader_info
-
-        # Pass 2: any interface
-        reader_dev, reader_info = try_readers(reader_pool)
-        if reader_dev is not None and reader_info is not None:
-            try:
-                reader_dev = open_device(reader_info)
-            except (OSError, ValueError):
-                reader_dev = None
-            if reader_dev is not None:
-                if debug:
-                    print(
-                        "selected split handles "
-                        f"writer={format_path(writer_info.get('path'))} "
-                        f"reader={format_path(reader_info.get('path'))}"
-                    )
-                return writer, reader_dev, writer_info, reader_info
-
-        if writer is not None:
-            try:
-                writer.close()
-            except OSError:
-                pass
+                return w, r, writer_info, reader_info
 
     return None, None, None, None
 
@@ -889,20 +652,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--vid",
         type=parse_int_auto,
-        default=VID,
-        help=f"USB VID to match (default: 0x{VID:04x})",
+        default=None,
+        help="USB VID to match (default: auto; known Pulsar dongles)",
     )
     parser.add_argument(
         "--pid-wireless",
         type=parse_int_auto,
-        default=PID_WIRELESS,
-        help=f"Wireless PID to match (default: 0x{PID_WIRELESS:04x})",
+        default=None,
+        help="Wireless PID to match (requires --vid; default: auto)",
     )
     parser.add_argument(
         "--pid-wired",
         type=parse_int_auto,
-        default=PID_WIRED,
-        help=f"Wired PID to match (default: 0x{PID_WIRED:04x})",
+        default=None,
+        help="Wired PID to match (requires --vid; default: auto)",
     )
     parser.add_argument(
         "--usage-page",
@@ -966,7 +729,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--transport",
         choices=["auto", "output", "feature"],
         default="auto",
-        help="HID transport for cmd04 (default: auto)",
+        help="Send transport for cmd04: feature (preferred), output, or auto",
     )
     return parser
 

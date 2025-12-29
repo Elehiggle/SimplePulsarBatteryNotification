@@ -80,9 +80,9 @@ def read_battery_status():
     devices = battery_logger.list_candidate_devices(
         "auto",
         None,
-        vid=battery_logger.VID,
-        pid_wireless=battery_logger.PID_WIRELESS,
-        pid_wired=battery_logger.PID_WIRED,
+        vid=None,
+        pid_wireless=None,
+        pid_wired=None,
         usage_page=battery_logger.USAGE_PAGE_VENDOR,
     )
     if not devices:

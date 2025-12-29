@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Pulsar X2 battery logger for Windows (wired or wireless).
+Pulsar battery logger for Windows (X2 Crazylight + X2 V1).
 
-Uses vendor HID output report 0x08 command 0x04; response report 0x08
-contains battery percent at byte 6.
+Uses vendor HID report 0x08 command 0x04; response contains battery percent
+at byte 6 and charging flag at byte 7.
 """
 
 from __future__ import annotations
@@ -11,249 +11,82 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import os
-import sys
 import time
 
-import hid
+from pulsar_devices import BACKENDS, BACKEND_ORDER
 
 
-VID = 0x3710
-PID_WIRELESS = 0x5406  # Pulsar 8K Dongle.
-PID_WIRED = 0x3414  # Pulsar X2 Crazylight (wired).
-PID_WIRED_X3_LHD_CL = 0x3508  # Possibly Pulsar X3 LHD CrazyLight. Unused.
-USAGE_PAGE_VENDOR = 0xFF02
-ENUMERATE_CACHE_TTL = 60.0
+def select_backend(
+    backend_name: str,
+    mode: str,
+    interface: int | None,
+) -> tuple[object | None, list[dict]]:
+    if backend_name != "auto":
+        backend = BACKENDS.get(backend_name)
+        if backend is None:
+            raise ValueError(f"Unknown backend '{backend_name}'")
+        return backend, backend.list_candidate_devices(mode, interface)
 
-_ENUM_CACHE: dict[tuple[int, int], tuple[float, list[dict]]] = {}
+    for backend in BACKEND_ORDER:
+        devices = backend.list_candidate_devices(mode, interface)
+        if devices:
+            return backend, devices
 
-CMD03_PACKET = bytes([0x08, 0x03] + [0x00] * 14 + [0x4A])
-CMD04_PACKET = bytes([0x08, 0x04] + [0x00] * 14 + [0x49])
-# Init sequence captured from Pulsar Fusion to enable cmd04 responses.
-CMD01_PACKET_A = bytes.fromhex("0801000000088e0c4d4c00000000000011")
-CMD01_PACKET_B = bytes.fromhex("0801000000089505dd4b00000000000082")
-CMD02_PACKET = bytes.fromhex("0802000000010100000000000000000049")
-CMD04_INIT_SEQUENCE = [
-    CMD01_PACKET_A,
-    CMD03_PACKET,
-    CMD03_PACKET,
-    CMD03_PACKET,
-    CMD01_PACKET_A,
-    CMD03_PACKET,
-    CMD03_PACKET,
-    CMD01_PACKET_A,
-    CMD03_PACKET,
-    CMD01_PACKET_B,
-    CMD03_PACKET,
-    CMD03_PACKET,
-    CMD03_PACKET,
-    CMD02_PACKET,
-    CMD03_PACKET,
-    CMD03_PACKET,
-    CMD04_PACKET,
-    CMD04_PACKET,
-]
+    return None, []
 
 
-def format_path(path) -> str:
-    if isinstance(path, bytes):
-        return path.hex()
-    return str(path)
+def resolve_transport(backend, transport: str) -> str:
+    if transport == "auto":
+        return backend.DEFAULT_TRANSPORT
+    return transport
 
 
-def enumerate_devices(vendor_id: int = 0, product_id: int = 0) -> list[dict]:
-    try:
-        return hid.enumerate(vendor_id, product_id)
-    except TypeError:
-        devices = hid.enumerate()
-        if vendor_id == 0 and product_id == 0:
-            return devices
-        filtered = []
-        for info in devices:
-            if vendor_id and info.get("vendor_id") != vendor_id:
-                continue
-            if product_id and info.get("product_id") != product_id:
-                continue
-            filtered.append(info)
-        return filtered
-
-
-def enumerate_devices_cached(vendor_id: int = 0, product_id: int = 0) -> list[dict]:
-    now = time.monotonic()
-    key = (vendor_id, product_id)
-    cached = _ENUM_CACHE.get(key)
-    if cached is not None:
-        cached_at, cached_devices = cached
-        if now - cached_at < ENUMERATE_CACHE_TTL:
-            return cached_devices
-
-    devices = enumerate_devices(vendor_id, product_id)
-    _ENUM_CACHE[key] = (now, devices)
-    return devices
-
-
-def list_candidate_devices(mode: str, interface: int | None) -> list[dict]:
-    allowed_pids = {PID_WIRELESS, PID_WIRED}
-    if mode == "wireless":
-        allowed_pids = {PID_WIRELESS}
-    elif mode == "wired":
-        allowed_pids = {PID_WIRED}
-
-    devices = []
-    for info in enumerate_devices_cached(VID, 0):
-        if info.get("vendor_id") != VID:
-            continue
-        if info.get("product_id") not in allowed_pids:
-            continue
-        if interface is not None and info.get("interface_number") != interface:
-            continue
-        if info.get("usage_page") != USAGE_PAGE_VENDOR:
-            continue
-        devices.append(info)
-
-    devices.sort(key=lambda item: format_path(item.get("path")))
-    return devices
-
-
-def print_devices(devices: list[dict]) -> None:
-    if not devices:
-        print("No matching Pulsar devices found.")
-        return
-
-    for index, info in enumerate(devices):
-        vid = info.get("vendor_id")
-        pid = info.get("product_id")
-        product = info.get("product_string") or ""
-        interface = info.get("interface_number")
-        usage_page = info.get("usage_page")
-        usage = info.get("usage")
-        path = format_path(info.get("path"))
-        usage_page_str = "None" if usage_page is None else f"0x{usage_page:04x}"
-        usage_str = "None" if usage is None else f"0x{usage:04x}"
-        print(
-            f"{index}: vid=0x{vid:04x} pid=0x{pid:04x} "
-            f"interface={interface} usage_page={usage_page_str} "
-            f"usage={usage_str} product='{product}' path={path}"
-        )
-
-
-def open_device(info: dict) -> hid.device | None:
-    if hasattr(hid, "device"):
-        dev = hid.device()
-        dev.open_path(info["path"])
-        return dev
-    if hasattr(hid, "Device"):
-        return hid.Device(path=info["path"])
-    raise RuntimeError("HID backend missing device constructor")
-
-
-def drain_input(dev: hid.device, attempts: int = 6) -> None:
-    try:
-        dev.set_nonblocking(1)
-        for _ in range(attempts):
-            data = dev.read(17)
-            if not data:
-                break
-    except (OSError, ValueError):
-        pass
-    finally:
+def close_devices(dev_write, dev_read) -> None:
+    if dev_write is not None:
         try:
-            dev.set_nonblocking(0)
-        except (OSError, ValueError):
+            dev_write.close()
+        except OSError:
+            pass
+    if dev_read is not None and dev_read is not dev_write:
+        try:
+            dev_read.close()
+        except OSError:
             pass
 
 
-def normalize_input_report(data: bytes | list[int]) -> bytes:
-    if isinstance(data, list):
-        data = bytes(data)
-    if len(data) == 16:
-        return b"\x08" + data
-    return data
-
-
-def parse_cmd04_payload(payload: bytes) -> tuple[int, bool] | None:
-    if len(payload) < 8:
-        return None
-    battery = payload[6]
-    charging = payload[7] != 0x00
-    return battery, charging
-
-
-def read_battery_cmd04(dev: hid.device, debug: bool) -> tuple[int, bool] | None:
-    drain_input(dev)
-
-    def read_cmd(expected_cmd: int, timeout: float, log_other: bool) -> bytes | None:
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            data = dev.read(17, 250)
-            if not data:
-                continue
-            payload = normalize_input_report(data)
-            if len(payload) < 7 or payload[0] != 0x08:
-                continue
-            if payload[1] != expected_cmd:
-                if debug and log_other:
-                    print(f"cmd04 skip cmd=0x{payload[1]:02x} data={payload.hex()}")
-                continue
-            return payload
+def read_battery_status(
+    backend_name: str = "auto",
+    mode: str = "auto",
+    interface: int | None = None,
+    transport: str = "auto",
+    debug: bool = False,
+) -> tuple[int, bool] | None:
+    backend, devices = select_backend(backend_name, mode, interface)
+    if backend is None or not devices:
         return None
 
-    def attempt_cmd04(timeout: float) -> bytes | None:
-        dev.write(CMD04_PACKET)
-        return read_cmd(0x04, timeout, log_other=True)
+    transport = resolve_transport(backend, transport)
+    dev_write = None
+    dev_read = None
 
-    payload = attempt_cmd04(0.8)
-    if payload is None:
-        if debug:
-            print("cmd04 init sequence")
-        for payload_init in CMD04_INIT_SEQUENCE:
-            dev.write(payload_init)
-            time.sleep(0.01)
-        payload = read_cmd(0x04, 2.0, log_other=True)
+    try:
+        dev_write, dev_read, _, _ = backend.select_device(
+            devices,
+            index=None,
+            debug=debug,
+            transport=transport,
+        )
+        if dev_write is None or dev_read is None:
+            return None
 
-    if payload is None:
-        return None
-
-    parsed = parse_cmd04_payload(payload)
-    if parsed is None:
-        if debug:
-            print(f"cmd04 parse failed data={payload.hex()}")
-        return None
-    raw, charging = parsed
-    if debug:
-        print(f"cmd04 raw={raw} charging={charging} data={payload.hex()}")
-    return raw, charging
-
-
-def select_device(
-    devices: list[dict],
-    index: int | None,
-    debug: bool,
-) -> tuple[hid.device | None, dict | None]:
-    if index is not None:
-        if index < 0 or index >= len(devices):
-            print(f"Invalid --index {index}; {len(devices)} device(s) available.")
-            return None, None
-        devices = [devices[index]]
-
-    for info in devices:
-        dev = None
-        try:
-            dev = open_device(info)
-            status = read_battery_cmd04(dev, debug)
-            if status is not None:
-                if debug:
-                    print(f"selected path={format_path(info.get('path'))}")
-                return dev, info
-        except (OSError, ValueError) as exc:
-            if debug:
-                print(f"probe_failed path={format_path(info.get('path'))} err={exc}")
-        if dev is not None:
-            try:
-                dev.close()
-            except OSError:
-                pass
-
-    return None, None
+        return backend.read_battery_cmd04(
+            dev_write,
+            debug=debug,
+            transport=transport,
+            reader=dev_read,
+        )
+    finally:
+        close_devices(dev_write, dev_read)
 
 
 def timestamp(now_utc: bool) -> str:
@@ -271,45 +104,72 @@ def open_log(path: str):
     return handle
 
 
+def list_devices(backend_name: str, mode: str, interface: int | None) -> None:
+    backends = BACKEND_ORDER if backend_name == "auto" else [BACKENDS[backend_name]]
+    for backend in backends:
+        print(f"[{backend.NAME}]")
+        devices = backend.list_candidate_devices(mode, interface)
+        backend.print_devices(devices)
+
+
 def run_logger(args: argparse.Namespace) -> int:
-    devices = list_candidate_devices(args.mode, args.interface)
     if args.list_devices:
-        print_devices(devices)
+        list_devices(args.backend, args.mode, args.interface)
         return 0
 
     log_handle = open_log(args.log_path)
-    dev = None
+    backend = None
+    devices: list[dict] = []
+    dev_write = None
+    dev_read = None
 
     try:
         while True:
-            if dev is None:
-                dev, _ = select_device(
+            if dev_write is None or dev_read is None:
+                backend, devices = select_backend(
+                    args.backend,
+                    args.mode,
+                    args.interface,
+                )
+                if backend is None or not devices:
+                    print("No matching Pulsar devices found; will retry.")
+                    if args.once:
+                        return 1
+                    time.sleep(args.interval)
+                    continue
+
+                transport = resolve_transport(backend, args.transport)
+                dev_write, dev_read, _, _ = backend.select_device(
                     devices,
                     args.index,
                     args.debug,
+                    transport,
                 )
-                if dev is None:
+                if dev_write is None or dev_read is None:
                     print("No responsive device found; will retry if --once was omitted.")
                     if args.once:
                         return 1
                     time.sleep(args.interval)
-                    devices = list_candidate_devices(args.mode, args.interface)
                     continue
 
+            transport = resolve_transport(backend, args.transport)
             battery = None
             charging = None
             try:
-                status = read_battery_cmd04(dev, args.debug)
+                status = backend.read_battery_cmd04(
+                    dev_write,
+                    args.debug,
+                    transport,
+                    reader=dev_read,
+                )
                 if status is not None:
                     battery, charging = status
             except (OSError, ValueError) as exc:
                 if args.debug:
                     print(f"read_failed err={exc}")
-                try:
-                    dev.close()
-                except OSError:
-                    pass
-                dev = None
+                close_devices(dev_write, dev_read)
+                dev_write = None
+                dev_read = None
 
             if battery is not None and charging is not None:
                 stamp = timestamp(args.utc)
@@ -321,22 +181,27 @@ def run_logger(args: argparse.Namespace) -> int:
                     return 0
             else:
                 print("Battery read failed; will retry.")
+                close_devices(dev_write, dev_read)
+                dev_write = None
+                dev_read = None
                 if args.once:
                     return 1
 
             time.sleep(args.interval)
     finally:
-        if dev is not None:
-            try:
-                dev.close()
-            except OSError:
-                pass
+        close_devices(dev_write, dev_read)
         log_handle.close()
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Log Pulsar X2 battery percentage on Windows."
+        description="Log Pulsar battery percentage on Windows."
+    )
+    parser.add_argument(
+        "--backend",
+        choices=["auto", *BACKENDS.keys()],
+        default="auto",
+        help="Device backend (default: auto)",
     )
     parser.add_argument(
         "--interval",
@@ -386,6 +251,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--debug",
         action="store_true",
         help="Print raw responses and probe errors",
+    )
+    parser.add_argument(
+        "--transport",
+        choices=["auto", "output", "feature"],
+        default="auto",
+        help="Send transport for cmd04: feature, output, or auto",
     )
     return parser
 

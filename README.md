@@ -12,7 +12,7 @@ that the dongle uses HID control/interrupt traffic for these queries.
 
 - Low-battery notifications (toast + beeps)
 - Different thresholds when the PC is locked vs unlocked
-- Works with the Pulsar X2 Crazylight wireless dongle on Windows
+- Works with the Pulsar X2 Crazylight + dongle and X2 V1 + dongle
 
 ## Prerequisites
 
@@ -58,6 +58,13 @@ Optional one-off battery check:
 python .\pulsar_x2_battery_logger.py --once
 ```
 
+Force a specific device backend:
+
+```powershell
+python .\pulsar_x2_battery_logger.py --backend x2cl --once
+python .\pulsar_x2_battery_logger.py --backend x2v1 --once
+```
+
 ## Usage via Windows binary
 
 Simply run the executable file which you can download [here](https://github.com/Elehiggle/SimplePulsarBatteryNotification/releases)
@@ -81,13 +88,15 @@ SimplePulsarBatteryNotification.exe --once
 
 ## Notes
 
-- This is specifically for the Pulsar X2 Crazylight. I do not know if other
-  models work yet. Pull requests are welcome.
+- This is specifically for the Pulsar X2 Crazylight, with support for the X2 V1. 
+  I do not know if other models work yet. Pull requests are welcome.
 - Battery readings can jump upward shortly after plugging in a charging cable
   and stay higher even after unplugging. The dongle appears to report a raw
   battery value that can lag or differ from the official software, so treat
   these readings as approximate and best for notifications rather than precise
   calibration.
+- If the mouse is idle and the dongle stops responding, the notifier reuses the
+  last successful reading for up to 10 minutes.
 - The detailed protocol research lives in `DETAILS.md`.
 - The debug script is in `research\pulsar_x2_debug_logger.py`.
 

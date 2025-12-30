@@ -61,6 +61,26 @@ def read_battery_status(
     transport: str = "auto",
     debug: bool = False,
 ) -> tuple[int, bool] | None:
+    status_info = read_battery_status_info(
+        backend_name=backend_name,
+        mode=mode,
+        interface=interface,
+        transport=transport,
+        debug=debug,
+    )
+    if status_info is None:
+        return None
+    status, _ = status_info
+    return status
+
+
+def read_battery_status_info(
+    backend_name: str = "auto",
+    mode: str = "auto",
+    interface: int | None = None,
+    transport: str = "auto",
+    debug: bool = False,
+) -> tuple[tuple[int, bool], str] | None:
     backend, devices = select_backend(backend_name, mode, interface)
     if backend is None or not devices:
         return None
@@ -79,12 +99,16 @@ def read_battery_status(
         if dev_write is None or dev_read is None:
             return None
 
-        return backend.read_battery_cmd04(
+        status = backend.read_battery_cmd04(
             dev_write,
             debug=debug,
             transport=transport,
             reader=dev_read,
         )
+        if status is None:
+            return None
+        display_name = getattr(backend, "DISPLAY_NAME", backend.NAME)
+        return status, display_name
     finally:
         close_devices(dev_write, dev_read)
 

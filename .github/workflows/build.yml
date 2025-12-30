@@ -34,7 +34,6 @@ jobs:
           --add-data "icon.png;."
           --hidden-import "winrt.windows.foundation.collections"
           --optimize 2
-          --exclude-module tkinter --exclude-module tcl --exclude-module tk
           --exclude-module unittest --exclude-module pydoc --exclude-module doctest
           main.py
         env:

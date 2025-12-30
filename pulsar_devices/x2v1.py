@@ -5,6 +5,7 @@ import time
 from .common import enumerate_devices_cached, format_path, hid, parse_cmd04_payload
 
 NAME = "x2v1"
+DISPLAY_NAME = "Pulsar X2 V1"
 VID = 0x25A7
 PID_WIRELESS = 0xFA7C
 PID_WIRED = 0xFA7B

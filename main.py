@@ -35,6 +35,7 @@ DEFAULT_SETTINGS = {
     "battery_level_alert_threshold_locked": 30,
     "refresh_interval_seconds": 5,
     "beep_enabled": True,
+    "alert_cooldown_minutes": 10,
 }
 
 BATTERY_STATUS_CACHE_TTL = 60 * 10
@@ -78,6 +79,9 @@ def load_settings() -> dict:
         except (OSError, json.JSONDecodeError, ValueError) as exc:
             logger.warning("settings load failed err=%s", exc)
         settings["beep_enabled"] = bool(settings.get("beep_enabled", True))
+        settings["alert_cooldown_minutes"] = int(
+            settings.get("alert_cooldown_minutes", 10)
+        )
         return settings
 
     for directory in _settings_dir_candidates():
@@ -108,6 +112,7 @@ def load_settings() -> dict:
             settings["battery_level_alert_threshold_locked"] = int(env_locked)
         except ValueError:
             pass
+    settings["alert_cooldown_minutes"] = int(settings.get("alert_cooldown_minutes", 10))
     return settings
 
 
@@ -137,23 +142,38 @@ def update_settings(unlocked: int, locked: int, refresh_interval: int) -> None:
         _SETTINGS["battery_level_alert_threshold_locked"] = locked
         _SETTINGS["refresh_interval_seconds"] = refresh_interval
         _SETTINGS["beep_enabled"] = bool(_SETTINGS.get("beep_enabled", True))
+        _SETTINGS["alert_cooldown_minutes"] = int(
+            _SETTINGS.get("alert_cooldown_minutes", 10)
+        )
     save_settings(_SETTINGS)
 
 
 def update_settings_with_beep(
-    unlocked: int, locked: int, refresh_interval: int, beep_enabled: bool
+    unlocked: int,
+    locked: int,
+    refresh_interval: int,
+    beep_enabled: bool,
+    alert_cooldown_minutes: int,
 ) -> None:
     with _SETTINGS_LOCK:
         _SETTINGS["battery_level_alert_threshold"] = unlocked
         _SETTINGS["battery_level_alert_threshold_locked"] = locked
         _SETTINGS["refresh_interval_seconds"] = refresh_interval
         _SETTINGS["beep_enabled"] = bool(beep_enabled)
+        _SETTINGS["alert_cooldown_minutes"] = int(alert_cooldown_minutes)
     save_settings(_SETTINGS)
 
 
 def get_beep_enabled() -> bool:
     with _SETTINGS_LOCK:
         return bool(_SETTINGS.get("beep_enabled", True))
+
+
+def get_alert_cooldown_seconds() -> int:
+    with _SETTINGS_LOCK:
+        minutes = int(_SETTINGS.get("alert_cooldown_minutes", 10))
+    minutes = max(0, min(minutes, 120))
+    return minutes * 60
 
 
 def get_foreground_window():
@@ -413,7 +433,10 @@ def enqueue_busy(is_busy: bool) -> None:
 def should_send_alert() -> bool:
     global _LAST_ALERT_AT
     now = time.monotonic()
-    if _LAST_ALERT_AT is None or now - _LAST_ALERT_AT >= ALERT_COOLDOWN_SECONDS:
+    cooldown = get_alert_cooldown_seconds()
+    if cooldown <= 0:
+        return True
+    if _LAST_ALERT_AT is None or now - _LAST_ALERT_AT >= cooldown:
         _LAST_ALERT_AT = now
         return True
     return False
@@ -770,8 +793,29 @@ class AppUI:
             self.beep_switch.deselect()
         self.beep_switch.grid(row=3, column=1, sticky="w", padx=(0, 8), pady=8)
 
+        cooldown_value = int(settings.get("alert_cooldown_minutes", 10))
+        cooldown_value = max(0, min(cooldown_value, 120))
+        ctk.CTkLabel(thresholds_frame, text="Alert cooldown (min)", font=label_font).grid(
+            row=4, column=0, sticky="w", padx=(12, 8), pady=8
+        )
+        self.cooldown_slider = ctk.CTkSlider(
+            thresholds_frame,
+            from_=0,
+            to=120,
+            number_of_steps=120,
+            command=self._on_cooldown_slider,
+        )
+        self.cooldown_slider.set(cooldown_value)
+        self.cooldown_slider.grid(row=4, column=1, padx=(0, 8), pady=8, sticky="ew")
+        self.cooldown_value = ctk.CTkLabel(
+            thresholds_frame,
+            text=f"{cooldown_value}m",
+            font=value_font,
+        )
+        self.cooldown_value.grid(row=4, column=2, sticky="e", padx=(0, 12), pady=8)
+
         buttons_frame = ctk.CTkFrame(thresholds_frame, fg_color="transparent")
-        buttons_frame.grid(row=4, column=0, columnspan=3, pady=(6, 10))
+        buttons_frame.grid(row=5, column=0, columnspan=3, pady=(6, 10))
 
         ctk.CTkButton(
             buttons_frame,
@@ -788,7 +832,7 @@ class AppUI:
         ).grid(row=0, column=1, padx=6)
 
         self.message_label = ctk.CTkLabel(thresholds_frame, text="", font=small_font)
-        self.message_label.grid(row=5, column=0, columnspan=3, pady=(0, 8))
+        self.message_label.grid(row=6, column=0, columnspan=3, pady=(0, 8))
 
         details_section = CollapsibleSection(
             root,
@@ -839,15 +883,18 @@ class AppUI:
             locked = int(round(self.locked_slider.get()))
             refresh_interval = int(round(self.refresh_slider.get()))
             beep_enabled = bool(self.beep_switch.get())
+            cooldown_minutes = int(round(self.cooldown_slider.get()))
             if not 0 <= unlocked <= 100 or not 0 <= locked <= 100:
                 raise ValueError("Thresholds must be between 0 and 100")
             if not 5 <= refresh_interval <= 300:
                 raise ValueError("Refresh interval must be between 5 and 300 seconds")
+            if not 0 <= cooldown_minutes <= 120:
+                raise ValueError("Alert cooldown must be between 0 and 120 minutes")
         except ValueError as exc:
             self.set_message(str(exc))
             return
 
-        self.on_save(unlocked, locked, refresh_interval, beep_enabled)
+        self.on_save(unlocked, locked, refresh_interval, beep_enabled, cooldown_minutes)
         self.set_message("Settings saved")
 
     def _on_unlocked_slider(self, value: float) -> None:
@@ -858,6 +905,9 @@ class AppUI:
 
     def _on_refresh_slider(self, value: float) -> None:
         self.refresh_value.configure(text=f"{int(round(value))}s")
+
+    def _on_cooldown_slider(self, value: float) -> None:
+        self.cooldown_value.configure(text=f"{int(round(value))}m")
 
     def set_message(self, text: str) -> None:
         self.message_label.configure(text=text)

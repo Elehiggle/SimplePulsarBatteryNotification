@@ -30,7 +30,16 @@ jobs:
           pip install pyinstaller==6.17.0
 
       - name: Build executable
-        run: pyinstaller --icon=icon.ico --add-data "icon.png;." --noconfirm --onefile --windowed --hidden-import "winrt.windows.foundation.collections" --name "SimplePulsarBatteryNotification" main.py
+        run: >-
+          python -m PyInstaller --clean --noconfirm --onefile --windowed
+          --name "SimplePulsarBatteryNotification"
+          --icon icon.ico
+          --add-data "icon.png;."
+          --hidden-import "winrt.windows.foundation.collections"
+          --optimize 2
+          --exclude-module tkinter --exclude-module tcl --exclude-module tk
+          --exclude-module unittest --exclude-module pydoc --exclude-module doctest
+          main.py
         env:
           SOURCE_DATE_EPOCH: 0
 

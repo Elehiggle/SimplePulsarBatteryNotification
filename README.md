@@ -86,6 +86,28 @@ One-off status toast:
 SimplePulsarBatteryNotification.exe --once
 ```
 
+## Building the Windows executable (PyInstaller)
+
+```powershell
+pip install -r requirements.txt
+
+python -m PyInstaller --clean --noconfirm --onefile --windowed `
+  --name "SimplePulsarBatteryNotification" `
+  --icon icon.ico `
+  --add-data "icon.png;." `
+  --hidden-import "winrt.windows.foundation.collections" `
+  --optimize 2 `
+  --exclude-module tkinter --exclude-module tcl --exclude-module tk `
+  --exclude-module unittest --exclude-module pydoc --exclude-module doctest `
+  main.py
+```
+
+Output:
+
+```text
+dist\SimplePulsarBatteryNotification.exe
+```
+
 ## Notes
 
 - This is specifically for the Pulsar X2 Crazylight, with support for the X2 V1.

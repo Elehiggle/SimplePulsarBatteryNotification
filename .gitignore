@@ -5,3 +5,5 @@ battery_log.csv
 *.pcap
 *.err
 *.out
+dist/
+build/

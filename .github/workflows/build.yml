@@ -1,18 +1,14 @@
-name: Publish
+name: Build (CI)
 
 permissions:
-  contents: write
+  contents: read
 
 on:
   push:
-    tags:
-      - "v*"
-    paths-ignore:
-      - "README.md"
-      - "**.png"
+  pull_request:
 
 jobs:
-  build-and-release:
+  build-windows:
     runs-on: windows-latest
 
     steps:
@@ -44,18 +40,17 @@ jobs:
         env:
           SOURCE_DATE_EPOCH: 0
 
-      - name: Upload artifact
+      - name: Verify build output
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist\SimplePulsarBatteryNotification.exe")) {
+            Write-Error "Build succeeded but dist\\SimplePulsarBatteryNotification.exe not found"
+          }
+
+      - name: Upload build artifact
         uses: actions/upload-artifact@v6
         with:
           name: windows-executable
           path: dist/*.exe
           if-no-files-found: error
           overwrite: true
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b
-        with:
-          files: ./dist/*.exe
-          prerelease: false
-          make_latest: true
-          token: ${{ secrets.GITHUB_TOKEN }}

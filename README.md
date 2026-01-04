@@ -8,6 +8,10 @@ Inspired by https://github.com/jonkristian/pulsar-x3-python/ - the key
 takeaways were that the battery value lives at byte 6 of a vendor report and
 that the dongle uses HID control/interrupt traffic for these queries.
 
+## Screenshot
+
+![GUI Screenshot](gui.png)
+
 ## Features
 
 - Low-battery notifications (toast + beeps)
@@ -131,6 +135,10 @@ dist\SimplePulsarBatteryNotification.exe
   "Open config file" button in the UI to jump to the active file.
 - The detailed protocol research lives in `DETAILS.md`.
 - The debug script is in `research\pulsar_x2_debug_logger.py`.
+
+## Related Projects
+
+Looking for a version with a nicer UI? Check out [PulsarBattery](https://github.com/darthsoup/PulsarBattery) - a C# implementation we're working on.
 
 ## Contributing
 

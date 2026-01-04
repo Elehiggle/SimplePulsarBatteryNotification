@@ -35,7 +35,7 @@ DEFAULT_SETTINGS = {
     "battery_level_alert_threshold_locked": 30,
     "refresh_interval_seconds": 5,
     "beep_enabled": True,
-    "alert_cooldown_minutes": 10,
+    "alert_cooldown_minutes": 20,
 }
 
 BATTERY_STATUS_CACHE_TTL = 60 * 10

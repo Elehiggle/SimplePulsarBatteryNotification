@@ -38,6 +38,7 @@ battery is low and **not charging**. It checks every 20 minutes while the
 PC is unlocked and uses a higher threshold shortly after the PC is locked.
 If the dongle stops responding (mouse idle/sleep), the notifier reuses the
 last successful reading for up to 10 minutes.
+The app runs in the tray and exposes a small UI for status and thresholds.
 
 Environment variables:
 

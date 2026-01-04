@@ -8,10 +8,16 @@ Inspired by https://github.com/jonkristian/pulsar-x3-python/ - the key
 takeaways were that the battery value lives at byte 6 of a vendor report and
 that the dongle uses HID control/interrupt traffic for these queries.
 
+## Screenshot
+
+![GUI Screenshot](gui.png)
+
 ## Features
 
 - Low-battery notifications (toast + beeps)
 - Different thresholds when the PC is locked vs unlocked
+- Tray icon with a small status/settings UI
+- Click a toast to open the UI (when the app is running)
 - Works with the Pulsar X2 Crazylight + dongle and X2 V1 + dongle
 
 ## Prerequisites
@@ -45,6 +51,9 @@ Run the notifier:
 ```powershell
 python .\main.py
 ```
+
+It runs in the tray. Left-click the tray icon to open the UI, right-click for
+Exit.
 
 One-off status toast:
 
@@ -97,7 +106,6 @@ python -m PyInstaller --clean --noconfirm --onefile --windowed `
   --add-data "icon.png;." `
   --hidden-import "winrt.windows.foundation.collections" `
   --optimize 2 `
-  --exclude-module tkinter --exclude-module tcl --exclude-module tk `
   --exclude-module unittest --exclude-module pydoc --exclude-module doctest `
   main.py
 ```
@@ -119,8 +127,18 @@ dist\SimplePulsarBatteryNotification.exe
   calibration.
 - If the mouse is idle and the dongle stops responding, the notifier reuses the
   last successful reading for up to 10 minutes.
+- Threshold settings are stored in
+  `%APPDATA%\SimplePulsarBatteryNotification\settings.json`. The refresh
+  interval (default 5 seconds) is configurable in the UI and saved there too.
+  When using the Microsoft Store Python, `%APPDATA%` may resolve under
+  `...\LocalCache\Roaming\SimplePulsarBatteryNotification`. You can use the
+  "Open config file" button in the UI to jump to the active file.
 - The detailed protocol research lives in `DETAILS.md`.
 - The debug script is in `research\pulsar_x2_debug_logger.py`.
+
+## Related Projects
+
+Looking for a version with a nicer UI? Check out [PulsarBattery](https://github.com/darthsoup/PulsarBattery) - a C# implementation we're working on.
 
 ## Contributing
 

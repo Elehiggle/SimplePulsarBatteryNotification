@@ -5,6 +5,7 @@ import time
 from .common import enumerate_devices_cached, format_path, hid, parse_cmd04_payload
 
 NAME = "x2cl"
+DISPLAY_NAME = "Pulsar X2 Crazylight"
 VID = 0x3710
 PID_WIRELESS = 0x5406  # Pulsar 8K Dongle.
 PID_WIRED = 0x3414  # Pulsar X2 Crazylight (wired).
